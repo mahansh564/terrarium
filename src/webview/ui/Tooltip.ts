@@ -39,21 +39,24 @@ export class Tooltip {
     this.panel.setDepth(52);
 
     this.title = scene.add.text(0, 0, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#eff7ff'
+      fontFamily: '"Trebuchet MS", "Lucida Sans Unicode", sans-serif',
+      fontStyle: 'bold',
+      fontSize: '13px',
+      color: '#f7feff'
     });
     this.title.setDepth(53);
     this.title.setVisible(false);
+    this.title.setShadow(0, 1, '#022a33', 3, false, true);
 
     this.body = scene.add.text(0, 0, '', {
-      fontFamily: 'monospace',
+      fontFamily: '"Trebuchet MS", "Lucida Sans Unicode", sans-serif',
       fontSize: '11px',
-      color: '#c6deef',
+      color: '#d7f9ff',
       lineSpacing: 2
     });
     this.body.setDepth(53);
     this.body.setVisible(false);
+    this.body.setShadow(0, 1, '#022a33', 2, false, true);
   }
 
   /**
@@ -101,6 +104,24 @@ export class Tooltip {
   }
 
   /**
+   * Sets selected creature id.
+   *
+   * @param agentId Selected agent id or null.
+   */
+  setSelectedAgent(agentId: string | null): void {
+    this.selectedAgentId = agentId;
+  }
+
+  /**
+   * Gets currently selected creature id.
+   *
+   * @returns Selected agent id or null.
+   */
+  getSelectedAgent(): string | null {
+    return this.selectedAgentId;
+  }
+
+  /**
    * Updates tooltip content and screen position.
    *
    * @param creatures Active creature map.
@@ -124,7 +145,7 @@ export class Tooltip {
 
     this.title.setText(`${creature.getAgent().name}${pinned ? ' [selected]' : ''}`);
     this.body.setText(
-      `State: ${snapshot.state}\nLevel: ${snapshot.level}  XP: ${snapshot.xp}\nMood: ${moodLabel}\nClick creature to pin`
+      `State: ${snapshot.state}\nLevel: ${snapshot.level}  XP: ${snapshot.xp}\nMood: ${moodLabel}\nTab: cycle  Arrow/WASD: move  Esc: clear`
     );
     this.title.setVisible(true);
     this.body.setVisible(true);
@@ -140,10 +161,12 @@ export class Tooltip {
     );
 
     this.panel.clear();
-    this.panel.fillStyle(0x0f1721, 0.92);
-    this.panel.lineStyle(1, 0x58708a, 0.95);
+    this.panel.fillStyle(0x184f63, 0.95);
+    this.panel.lineStyle(2, 0x83ffe4, 0.95);
     this.panel.fillRoundedRect(position.x, position.y, width, height, 6);
     this.panel.strokeRoundedRect(position.x, position.y, width, height, 6);
+    this.panel.fillStyle(0xffffff, 0.08);
+    this.panel.fillRoundedRect(position.x + 1, position.y + 1, width - 2, 12, 6);
   }
 
   /**

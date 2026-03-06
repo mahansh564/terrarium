@@ -21,13 +21,30 @@ import { WorkspaceStatsStore } from './persistence';
 const PANEL_VIEW_TYPE = 'codeterrarium.panel';
 
 let activePanel: vscode.WebviewPanel | null = null;
+type WebviewMessageProbe = (message: ExtensionToWebviewMessage) => void;
+let testMessageProbe: WebviewMessageProbe | null = null;
+let testMessageDispatcher: ((message: WebviewToExtensionMessage) => Promise<void>) | null = null;
+
+/**
+ * Extension API returned from activation for integration testing.
+ */
+export interface CodeTerrariumExtensionApi {
+  /** Registers a temporary observer for extension-to-webview messages. */
+  __setWebviewMessageProbeForTest: (probe: WebviewMessageProbe | null) => void;
+  /** Dispatches a webview message into the extension message handler. */
+  __dispatchWebviewMessageForTest: (message: WebviewToExtensionMessage) => Promise<void>;
+  /** Indicates whether the terrarium panel is currently open. */
+  __isPanelOpenForTest: () => boolean;
+  /** Invokes extension deactivation hook for lifecycle tests. */
+  __deactivateForTest: () => void;
+}
 
 /**
  * Extension activation entrypoint.
  *
  * @param context VS Code extension activation context.
  */
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+export async function activate(context: vscode.ExtensionContext): Promise<CodeTerrariumExtensionApi> {
   const bridge = new ExtensionWebviewBridge();
   const statsStore = new WorkspaceStatsStore(context);
   let persistedState = await statsStore.load();
@@ -56,7 +73,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const handleMessage = async (message: WebviewToExtensionMessage): Promise<void> => {
     switch (message.type) {
       case 'ready': {
-        await bridge.post({
+        await postIfPanelOpen(bridge, {
           type: 'init',
           payload: {
             config: readTerrariumConfig(),
@@ -78,6 +95,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         break;
     }
   };
+  testMessageDispatcher = handleMessage;
 
   const openPanel = (): vscode.WebviewPanel => {
     if (activePanel !== null) {
@@ -167,10 +185,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       dispose: () => {
         messageSubscription?.dispose();
         watcher.dispose();
+        testMessageDispatcher = null;
+        testMessageProbe = null;
         void statsStore.dispose();
       }
     }
   );
+
+  return {
+    __setWebviewMessageProbeForTest,
+    __dispatchWebviewMessageForTest,
+    __isPanelOpenForTest,
+    __deactivateForTest: deactivate
+  };
 }
 
 /**
@@ -181,6 +208,42 @@ export function deactivate(): void {
     activePanel.dispose();
     activePanel = null;
   }
+
+  testMessageDispatcher = null;
+  testMessageProbe = null;
+}
+
+/**
+ * Registers a temporary observer for extension-to-webview messages in integration tests.
+ *
+ * @param probe Observer callback, or null to clear.
+ */
+export function __setWebviewMessageProbeForTest(probe: WebviewMessageProbe | null): void {
+  testMessageProbe = probe;
+}
+
+/**
+ * Dispatches a webview message into the extension message handler during integration tests.
+ *
+ * @param message Webview-to-extension message payload.
+ */
+export async function __dispatchWebviewMessageForTest(
+  message: WebviewToExtensionMessage
+): Promise<void> {
+  if (testMessageDispatcher === null) {
+    throw new Error('Extension test dispatcher is not initialized. Activate the extension first.');
+  }
+
+  await testMessageDispatcher(message);
+}
+
+/**
+ * Indicates whether the terrarium panel is currently open.
+ *
+ * @returns True when a panel is open.
+ */
+export function __isPanelOpenForTest(): boolean {
+  return activePanel !== null;
 }
 
 function createWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
@@ -329,6 +392,7 @@ async function postIfPanelOpen(
     return;
   }
 
+  testMessageProbe?.(message);
   await bridge.post(message);
 }
 

@@ -107,7 +107,10 @@ export function levelFromXp(xp: number): number {
  */
 export class Creature {
   private readonly sprite: Phaser.GameObjects.Sprite;
+  private readonly selectionRing: Phaser.GameObjects.Arc;
   private snapshot: CreatureSnapshot;
+  private selected = false;
+  private manualMovement = false;
 
   /**
    * Creates a creature entity.
@@ -130,7 +133,14 @@ export class Creature {
     this.sprite = scene.add.sprite(x, y, `${textureKey}-idle`);
     this.sprite.setOrigin(0.5, 0.5);
     this.sprite.setScale(2);
+    this.sprite.setDepth(20);
     this.sprite.setInteractive({ useHandCursor: true });
+
+    this.selectionRing = scene.add.circle(x, y + 14, 14, 0x51f6ff, 0.14);
+    this.selectionRing.setStrokeStyle(2, 0xc8ff7a, 0.9);
+    this.selectionRing.setScale(1.4, 0.58);
+    this.selectionRing.setDepth(18);
+    this.selectionRing.setVisible(false);
 
     if (agent.color !== undefined) {
       this.sprite.setTint(parseHexColor(agent.color));
@@ -165,6 +175,8 @@ export class Creature {
    * @param now Current timestamp.
    */
   tick(now: number): boolean {
+    this.updateSelectionRing(now);
+
     const duration = STATE_DURATIONS[this.snapshot.state];
     if (now - this.snapshot.updatedAt <= duration) {
       return false;
@@ -209,6 +221,17 @@ export class Creature {
   }
 
   /**
+   * Updates creature world position.
+   *
+   * @param x Next x coordinate.
+   * @param y Next y coordinate.
+   */
+  setPosition(x: number, y: number): void {
+    this.sprite.setPosition(x, y);
+    this.selectionRing.setPosition(x, y + 14);
+  }
+
+  /**
    * Returns represented agent config.
    *
    * @returns Agent config.
@@ -233,6 +256,34 @@ export class Creature {
    */
   getSnapshot(): CreatureSnapshot {
     return { ...this.snapshot };
+  }
+
+  /**
+   * Sets whether this creature is selected by the user.
+   *
+   * @param selected True when selected.
+   */
+  setSelected(selected: boolean): void {
+    this.selected = selected;
+    this.selectionRing.setVisible(selected);
+    if (!selected) {
+      this.selectionRing.setScale(1);
+      this.selectionRing.setAlpha(0.9);
+    }
+  }
+
+  /**
+   * Applies manual movement override for animation playback.
+   *
+   * @param active True while keyboard movement is active.
+   */
+  setManualMovement(active: boolean): void {
+    if (this.manualMovement === active) {
+      return;
+    }
+
+    this.manualMovement = active;
+    this.playStateAnimation(this.snapshot.state);
   }
 
   /**
@@ -266,10 +317,16 @@ export class Creature {
    * Releases sprite resources.
    */
   destroy(): void {
+    this.selectionRing.destroy();
     this.sprite.destroy();
   }
 
   private playStateAnimation(state: CreatureState): void {
+    if (this.manualMovement) {
+      this.sprite.play(`${this.agent.creatureType}-walk`, true);
+      return;
+    }
+
     const animationKey = `${this.agent.creatureType}-${state}`;
     const hasAnimation = this.scene.anims.exists(animationKey);
 
@@ -285,6 +342,16 @@ export class Creature {
     }
 
     this.sprite.play(`${this.agent.creatureType}-walk`, true);
+  }
+
+  private updateSelectionRing(now: number): void {
+    if (!this.selected) {
+      return;
+    }
+
+    const pulse = 1 + Math.sin(now * 0.01) * 0.08;
+    this.selectionRing.setScale(1.4 * pulse, 0.58 * pulse);
+    this.selectionRing.setAlpha(0.84 + Math.sin(now * 0.014) * 0.12);
   }
 }
 

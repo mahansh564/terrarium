@@ -105,9 +105,11 @@
   "scripts": {
     "build": "npm run typecheck && npm run build:extension && npm run build:webview",
     "build:extension": "esbuild src/extension/activate.ts --bundle --outfile=dist/extension/extension.js --platform=node --format=cjs --target=node18 --sourcemap --external:vscode",
+    "build:integration-tests": "esbuild tests/integration/runTest.ts tests/integration/suite/index.ts --bundle --platform=node --format=cjs --outbase=tests/integration --outdir=tests/.build/integration --sourcemap --external:vscode --external:@vscode/test-electron",
     "build:webview": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:integration": "npm run build:extension && npm run build:integration-tests && node tests/.build/integration/runTest.js",
     "package": "npm run build && vsce package --no-dependencies"
   },
   "dependencies": {

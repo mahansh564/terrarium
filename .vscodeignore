@@ -1,5 +1,7 @@
 src/**
 tests/**
+.github/**
+.vscode/**
 .eslintrc*
 eslint.config.*
 prettier.config.*
@@ -8,3 +10,7 @@ esbuild.config.ts
 vite.config.ts
 tsconfig.json
 AGENTS.md
+dist/integration/**
+dist/**/*.map
+.vscode-test/**
+tests/.build/**

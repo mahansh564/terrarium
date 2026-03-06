@@ -5,6 +5,7 @@ import {
   TERRARIUM_TILEMAP_URL,
   TILE_TEXTURE_ASSETS
 } from '../assets/manifest';
+import { toPhaserSafeDataUri } from '../assets/dataUri';
 
 /**
  * Boot scene responsible for preloading terrarium assets.
@@ -22,23 +23,23 @@ export class BootScene extends Phaser.Scene {
    */
   preload(): void {
     for (const tile of TILE_TEXTURE_ASSETS) {
-      this.load.svg(tile.key, tile.url, {
+      this.load.svg(tile.key, toPhaserSafeDataUri(tile.url), {
         width: tile.width,
         height: tile.height
       });
     }
 
     for (const creatureTexture of CREATURE_TEXTURE_ASSETS) {
-      this.load.svg(creatureTexture.key, creatureTexture.url, {
+      this.load.svg(creatureTexture.key, toPhaserSafeDataUri(creatureTexture.url), {
         width: creatureTexture.width,
         height: creatureTexture.height
       });
     }
 
-    this.load.json(TERRARIUM_TILEMAP_KEY, TERRARIUM_TILEMAP_URL);
+    this.load.json(TERRARIUM_TILEMAP_KEY, toPhaserSafeDataUri(TERRARIUM_TILEMAP_URL));
 
     for (const track of TERRARIUM_AUDIO_ASSETS) {
-      this.load.audio(track.key, [track.url]);
+      this.load.audio(track.key, [toPhaserSafeDataUri(track.url)]);
     }
   }
 

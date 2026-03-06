@@ -15,6 +15,7 @@ interface VsCodeApi {
 declare function acquireVsCodeApi<T = unknown>(): T;
 
 const vscodeApi = acquireVsCodeApi<VsCodeApi>();
+installCrashOverlay();
 
 initializeTerrariumState((message) => {
   vscodeApi.postMessage(message);
@@ -57,3 +58,41 @@ window.addEventListener('beforeunload', () => {
 applyRuntimeFps();
 
 vscodeApi.postMessage({ type: 'ready' });
+
+function installCrashOverlay(): void {
+  const showOverlay = (message: string): void => {
+    const existing = document.getElementById('codeterrarium-error-overlay');
+    if (existing !== null) {
+      existing.textContent = message;
+      return;
+    }
+
+    const overlay = document.createElement('pre');
+    overlay.id = 'codeterrarium-error-overlay';
+    overlay.textContent = message;
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.margin = '0';
+    overlay.style.padding = '14px';
+    overlay.style.whiteSpace = 'pre-wrap';
+    overlay.style.background = '#1d2430';
+    overlay.style.color = '#ffcece';
+    overlay.style.fontFamily = 'monospace';
+    overlay.style.fontSize = '12px';
+    overlay.style.zIndex = '99999';
+    document.body.appendChild(overlay);
+  };
+
+  window.addEventListener('error', (event) => {
+    const detail =
+      event.error instanceof Error
+        ? `${event.error.message}\n${event.error.stack ?? ''}`
+        : `${event.message} (${event.filename}:${event.lineno})`;
+    showOverlay(`CodeTerrarium webview crashed:\n${detail}`);
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const detail = event.reason instanceof Error ? event.reason.message : String(event.reason);
+    showOverlay(`CodeTerrarium webview unhandled rejection:\n${detail}`);
+  });
+}
