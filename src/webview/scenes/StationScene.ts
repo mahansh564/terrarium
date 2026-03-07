@@ -1,32 +1,32 @@
-import { TERRARIUM_DIMENSIONS } from '@shared/constants';
+import { STATION_DIMENSIONS } from '@shared/constants';
 import type { AgentConfig } from '@shared/types';
-import { TERRARIUM_AUDIO_ASSETS, TERRARIUM_TILEMAP_KEY } from '../assets/manifest';
-import { Creature } from '../entities/Creature';
-import { CreatureFactory } from '../entities/CreatureFactory';
-import { DayNight } from '../environment/DayNight';
-import { Flora } from '../environment/Flora';
+import { STATION_AUDIO_ASSETS, STATION_TILEMAP_KEY } from '../assets/manifest';
+import { CrewFactory } from '../entities/CrewFactory';
+import { CrewUnit } from '../entities/CrewUnit';
+import { OrbitalCycle } from '../environment/OrbitalCycle';
+import { StationAlerts } from '../environment/StationAlerts';
+import { StationInfrastructure } from '../environment/StationInfrastructure';
 import {
   pickTileTextureFallback,
   readTilemapAsset,
   resolveTileFromMap
 } from '../environment/tilemap';
-import { Weather } from '../environment/Weather';
-import { HUD } from '../ui/HUD';
-import { Tooltip } from '../ui/Tooltip';
-import { getTerrariumState } from '../state/context';
 import {
   advanceSelection,
   clampPosition,
   resolveMovementVector,
   selectAgentByIndex
 } from '../input/controls';
+import { getStationState } from '../state/context';
+import { HUD } from '../ui/HUD';
+import { Tooltip } from '../ui/Tooltip';
 
-const CREATURE_MOVE_SPEED_PX_PER_SECOND = 118;
-const CREATURE_MOVEMENT_BOUNDS = {
+const CREW_MOVE_SPEED_PX_PER_SECOND = 118;
+const CREW_MOVEMENT_BOUNDS = {
   minX: 28,
-  maxX: TERRARIUM_DIMENSIONS.width - 28,
+  maxX: STATION_DIMENSIONS.width - 28,
   minY: 104,
-  maxY: TERRARIUM_DIMENSIONS.height - 36
+  maxY: STATION_DIMENSIONS.height - 36
 } as const;
 const QUICK_SELECT_KEYCODES = [
   Phaser.Input.Keyboard.KeyCodes.ONE,
@@ -41,14 +41,14 @@ const QUICK_SELECT_KEYCODES = [
 ] as const;
 
 /**
- * Main gameplay scene rendering creatures and ecosystem systems.
+ * Main gameplay scene rendering crew and station systems.
  */
-export class TerrariumScene extends Phaser.Scene {
-  private readonly creatures = new Map<string, Creature>();
-  private readonly creatureFactory = new CreatureFactory();
-  private weather!: Weather;
-  private flora!: Flora;
-  private dayNight!: DayNight;
+export class StationScene extends Phaser.Scene {
+  private readonly crewUnits = new Map<string, CrewUnit>();
+  private readonly crewFactory = new CrewFactory();
+  private stationAlerts!: StationAlerts;
+  private stationInfrastructure!: StationInfrastructure;
+  private orbitalCycle!: OrbitalCycle;
   private hud!: HUD;
   private tooltip!: Tooltip;
   private ambientTrack: Phaser.Sound.BaseSound | null = null;
@@ -71,41 +71,41 @@ export class TerrariumScene extends Phaser.Scene {
   private tabSelectionHandler: ((event: KeyboardEvent) => void) | null = null;
 
   /**
-   * Creates the terrarium scene.
+   * Creates the station scene.
    */
   constructor() {
-    super('TerrariumScene');
+    super('StationScene');
   }
 
   /**
    * Initializes visual layers and subscribes to state changes.
    */
   create(): void {
-    const state = getTerrariumState();
+    const state = getStationState();
 
     this.drawBackground();
 
-    this.weather = new Weather(this);
-    this.flora = new Flora(this);
-    this.dayNight = new DayNight(this);
+    this.stationAlerts = new StationAlerts(this);
+    this.stationInfrastructure = new StationInfrastructure(this);
+    this.orbitalCycle = new OrbitalCycle(this);
     this.hud = new HUD(this);
     this.tooltip = new Tooltip(this);
-    this.weather.setEnabled(state.getConfig().weatherEnabled);
+    this.stationAlerts.setEnabled(state.getConfig().stationEffectsEnabled);
     this.startAmbientTrack();
 
-    this.syncCreatures(state.getConfig().agents);
-    this.hud.syncCreatures(this.creatures);
+    this.syncCrewUnits(state.getConfig().agents);
+    this.hud.syncCrewUnits(this.crewUnits);
     this.hud.setSelectedAgent(this.selectedAgentId);
-    this.tooltip.syncCreatures(this.creatures);
+    this.tooltip.syncCrewUnits(this.crewUnits);
     this.tooltip.setSelectedAgent(this.selectedAgentId);
     this.setupKeyboardControls();
 
     this.unsubscribe = state.subscribe(() => {
-      this.weather.setEnabled(state.getConfig().weatherEnabled);
-      this.syncCreatures(state.getConfig().agents);
-      this.hud.syncCreatures(this.creatures);
+      this.stationAlerts.setEnabled(state.getConfig().stationEffectsEnabled);
+      this.syncCrewUnits(state.getConfig().agents);
+      this.hud.syncCrewUnits(this.crewUnits);
       this.hud.setSelectedAgent(this.selectedAgentId);
-      this.tooltip.syncCreatures(this.creatures);
+      this.tooltip.syncCrewUnits(this.crewUnits);
       this.tooltip.setSelectedAgent(this.selectedAgentId);
     });
 
@@ -127,53 +127,53 @@ export class TerrariumScene extends Phaser.Scene {
   }
 
   /**
-   * Updates creatures and ecosystem systems on each frame.
+   * Updates crew and station systems on each frame.
    *
    * @param time Current timestamp.
    * @param delta Delta frame time.
    */
   update(time: number, delta: number): void {
-    const state = getTerrariumState();
+    const state = getStationState();
     this.handleKeyboardSelection();
-    this.handleSelectedCreatureMovement(delta);
+    this.handleSelectedCrewMovement(delta);
 
     const events = state.drainAgentEvents();
     for (const event of events) {
-      const creature = this.creatures.get(event.agentId);
-      if (creature === undefined) {
+      const crew = this.crewUnits.get(event.agentId);
+      if (crew === undefined) {
         continue;
       }
 
-      if (creature.applyEvent(event)) {
-        state.updateCreatureState(event.agentId, creature.toPersistedState());
+      if (crew.applyEvent(event)) {
+        state.updateCrewState(event.agentId, crew.toPersistedState());
       }
     }
 
     const signals = state.drainHealthSignals();
     for (const signal of signals) {
-      this.weather.applySignal(signal);
-      this.flora.applySignal(signal);
+      this.stationAlerts.applySignal(signal);
+      this.stationInfrastructure.applySignal(signal);
     }
 
-    for (const [agentId, creature] of this.creatures) {
-      if (creature.tick(time)) {
-        state.updateCreatureState(agentId, creature.toPersistedState());
+    for (const [agentId, crew] of this.crewUnits) {
+      if (crew.tick(time)) {
+        state.updateCrewState(agentId, crew.toPersistedState());
       }
     }
 
-    this.weather.update(time);
-    this.flora.update(delta);
-    this.dayNight.update(time);
+    this.stationAlerts.update(time);
+    this.stationInfrastructure.update(delta);
+    this.orbitalCycle.update(time);
     this.hud.setSelectedAgent(this.selectedAgentId);
-    this.hud.update(this.creatures);
-    this.tooltip.update(this.creatures);
+    this.hud.update(this.crewUnits);
+    this.tooltip.update(this.crewUnits);
   }
 
-  private syncCreatures(configuredAgents: AgentConfig[]): void {
+  private syncCrewUnits(configuredAgents: AgentConfig[]): void {
     const agents = configuredAgents.length > 0 ? configuredAgents : [demoAgent()];
     const incomingIds = new Set(agents.map((agent) => agent.id));
 
-    for (const [agentId, creature] of this.creatures) {
+    for (const [agentId, crew] of this.crewUnits) {
       if (incomingIds.has(agentId)) {
         continue;
       }
@@ -181,8 +181,8 @@ export class TerrariumScene extends Phaser.Scene {
       if (this.selectedAgentId === agentId) {
         this.setSelectedAgent(null);
       }
-      creature.destroy();
-      this.creatures.delete(agentId);
+      crew.destroy();
+      this.crewUnits.delete(agentId);
     }
 
     for (let index = 0; index < agents.length; index += 1) {
@@ -191,34 +191,34 @@ export class TerrariumScene extends Phaser.Scene {
         continue;
       }
 
-      if (this.creatures.has(agent.id)) {
+      if (this.crewUnits.has(agent.id)) {
         continue;
       }
 
-      const creature = this.creatureFactory.create(this, {
+      const crew = this.crewFactory.create(this, {
         agent,
         index,
         total: agents.length,
-        persisted: getTerrariumState().getCreatureState(agent.id)
+        persisted: getStationState().getCrewState(agent.id)
       });
 
-      this.creatures.set(agent.id, creature);
-      this.bindCreatureTooltipInteractions(creature);
+      this.crewUnits.set(agent.id, crew);
+      this.bindCrewTooltipInteractions(crew);
     }
   }
 
-  private bindCreatureTooltipInteractions(creature: Creature): void {
-    const agentId = creature.getAgent().id;
+  private bindCrewTooltipInteractions(crew: CrewUnit): void {
+    const agentId = crew.getAgent().id;
 
-    creature.onPointerOver(() => {
+    crew.onPointerOver(() => {
       this.tooltip.setHoveredAgent(agentId);
     });
 
-    creature.onPointerOut(() => {
+    crew.onPointerOut(() => {
       this.tooltip.clearHoveredAgent(agentId);
     });
 
-    creature.onPointerDown(() => {
+    crew.onPointerDown(() => {
       const nextSelected = this.selectedAgentId === agentId ? null : agentId;
       this.setSelectedAgent(nextSelected);
       this.tooltip.setHoveredAgent(agentId);
@@ -226,10 +226,10 @@ export class TerrariumScene extends Phaser.Scene {
   }
 
   private drawBackground(): void {
-    const loadedTilemap = readTilemapAsset(this.cache.json.get(TERRARIUM_TILEMAP_KEY));
-    const tileSize = loadedTilemap?.tileSize ?? TERRARIUM_DIMENSIONS.tileSize;
-    const columns = loadedTilemap?.width ?? Math.ceil(TERRARIUM_DIMENSIONS.width / tileSize);
-    const rows = loadedTilemap?.height ?? Math.ceil(TERRARIUM_DIMENSIONS.height / tileSize);
+    const loadedTilemap = readTilemapAsset(this.cache.json.get(STATION_TILEMAP_KEY));
+    const tileSize = loadedTilemap?.tileSize ?? STATION_DIMENSIONS.tileSize;
+    const columns = loadedTilemap?.width ?? Math.ceil(STATION_DIMENSIONS.width / tileSize);
+    const rows = loadedTilemap?.height ?? Math.ceil(STATION_DIMENSIONS.height / tileSize);
 
     for (let row = 0; row < rows; row += 1) {
       for (let col = 0; col < columns; col += 1) {
@@ -248,16 +248,16 @@ export class TerrariumScene extends Phaser.Scene {
 
     const atmosphere = this.add.graphics();
     atmosphere.setDepth(1);
-    atmosphere.fillStyle(0x2c628e, 0.14);
-    atmosphere.fillRect(0, 0, TERRARIUM_DIMENSIONS.width, TERRARIUM_DIMENSIONS.height);
-    atmosphere.fillStyle(0x5fd2ff, 0.08);
-    atmosphere.fillCircle(TERRARIUM_DIMENSIONS.width * 0.18, TERRARIUM_DIMENSIONS.height * 0.24, 110);
-    atmosphere.fillStyle(0xfff59b, 0.06);
-    atmosphere.fillCircle(TERRARIUM_DIMENSIONS.width * 0.79, TERRARIUM_DIMENSIONS.height * 0.17, 138);
+    atmosphere.fillStyle(0x142334, 0.26);
+    atmosphere.fillRect(0, 0, STATION_DIMENSIONS.width, STATION_DIMENSIONS.height);
+    atmosphere.fillStyle(0x66dfff, 0.11);
+    atmosphere.fillRect(0, 0, STATION_DIMENSIONS.width, 92);
+    atmosphere.fillStyle(0x0b1728, 0.55);
+    atmosphere.fillRect(0, STATION_DIMENSIONS.height - 88, STATION_DIMENSIONS.width, 88);
   }
 
   private startAmbientTrack(): void {
-    const track = TERRARIUM_AUDIO_ASSETS[0];
+    const track = STATION_AUDIO_ASSETS[0];
     if (track === undefined) {
       return;
     }
@@ -335,13 +335,13 @@ export class TerrariumScene extends Phaser.Scene {
     }
   }
 
-  private handleSelectedCreatureMovement(delta: number): void {
+  private handleSelectedCrewMovement(delta: number): void {
     if (this.selectedAgentId === null) {
       return;
     }
 
-    const selectedCreature = this.creatures.get(this.selectedAgentId);
-    if (selectedCreature === undefined) {
+    const selectedCrew = this.crewUnits.get(this.selectedAgentId);
+    if (selectedCrew === undefined) {
       this.setSelectedAgent(null);
       return;
     }
@@ -354,31 +354,31 @@ export class TerrariumScene extends Phaser.Scene {
     });
 
     const moving = vector.x !== 0 || vector.y !== 0;
-    selectedCreature.setManualMovement(moving);
+    selectedCrew.setManualMovement(moving);
     if (!moving) {
       return;
     }
 
-    const distance = (CREATURE_MOVE_SPEED_PX_PER_SECOND * delta) / 1000;
-    const current = selectedCreature.getPosition();
+    const distance = (CREW_MOVE_SPEED_PX_PER_SECOND * delta) / 1000;
+    const current = selectedCrew.getPosition();
     const next = clampPosition(
       {
         x: current.x + vector.x * distance,
         y: current.y + vector.y * distance
       },
-      CREATURE_MOVEMENT_BOUNDS
+      CREW_MOVEMENT_BOUNDS
     );
-    selectedCreature.setPosition(next.x, next.y);
+    selectedCrew.setPosition(next.x, next.y);
   }
 
   private setSelectedAgent(agentId: string | null): void {
-    const nextAgentId = agentId !== null && this.creatures.has(agentId) ? agentId : null;
+    const nextAgentId = agentId !== null && this.crewUnits.has(agentId) ? agentId : null;
     if (this.selectedAgentId === nextAgentId) {
       return;
     }
 
     if (this.selectedAgentId !== null) {
-      const current = this.creatures.get(this.selectedAgentId);
+      const current = this.crewUnits.get(this.selectedAgentId);
       if (current !== undefined) {
         current.setSelected(false);
         current.setManualMovement(false);
@@ -387,7 +387,7 @@ export class TerrariumScene extends Phaser.Scene {
 
     this.selectedAgentId = nextAgentId;
     if (nextAgentId !== null) {
-      const next = this.creatures.get(nextAgentId);
+      const next = this.crewUnits.get(nextAgentId);
       if (next !== undefined) {
         next.setSelected(true);
       }
@@ -403,7 +403,7 @@ export class TerrariumScene extends Phaser.Scene {
   }
 
   private getAgentIds(): string[] {
-    return [...this.creatures.keys()];
+    return [...this.crewUnits.keys()];
   }
 
   private isPressed(key: Phaser.Input.Keyboard.Key | null | undefined): boolean {
@@ -416,6 +416,6 @@ function demoAgent(): AgentConfig {
     id: 'demo-agent',
     name: 'Demo Agent',
     transcriptPath: '',
-    creatureType: 'slime'
+    crewRole: 'engineer'
   };
 }

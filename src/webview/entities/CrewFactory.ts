@@ -1,37 +1,37 @@
-import { TERRARIUM_DIMENSIONS } from '@shared/constants';
-import type { AgentConfig, PersistedCreatureState } from '@shared/types';
-import { Creature } from './Creature';
+import { STATION_DIMENSIONS } from '@shared/constants';
+import type { AgentConfig, PersistedCrewState } from '@shared/types';
+import { CrewUnit } from './CrewUnit';
 
 /**
- * Factory options for creating creature entities.
+ * Factory options for creating crew entities.
  */
-export interface CreateCreatureOptions {
-  /** Agent represented by this creature. */
+export interface CreateCrewOptions {
+  /** Agent represented by this crew unit. */
   agent: AgentConfig;
   /** Index of agent among total active agents. */
   index: number;
   /** Total number of active agents. */
   total: number;
-  /** Persisted state to hydrate into creature entity. */
-  persisted: PersistedCreatureState;
+  /** Persisted state to hydrate into crew entity. */
+  persisted: PersistedCrewState;
 }
 
 /**
- * Spawns creatures with deterministic positions and texture selection.
+ * Spawns crew units with deterministic positions and texture selection.
  */
-export class CreatureFactory {
+export class CrewFactory {
   /**
-   * Creates one creature instance for a configured agent.
+   * Creates one crew unit instance for a configured agent.
    *
    * @param scene Scene that owns the entity.
    * @param options Spawn options.
-   * @returns Spawned creature instance.
+   * @returns Spawned crew unit instance.
    */
-  create(scene: Phaser.Scene, options: CreateCreatureOptions): Creature {
+  create(scene: Phaser.Scene, options: CreateCrewOptions): CrewUnit {
     const spawn = this.computeSpawn(options.agent.id, options.index, options.total);
-    const textureKey = `creature-${options.agent.creatureType}`;
+    const textureKey = `crew-${options.agent.crewRole}`;
 
-    return new Creature(scene, options.agent, spawn.x, spawn.y, textureKey, options.persisted);
+    return new CrewUnit(scene, options.agent, spawn.x, spawn.y, textureKey, options.persisted);
   }
 
   /**
@@ -44,15 +44,15 @@ export class CreatureFactory {
    */
   computeSpawn(agentId: string, index: number, total: number): { x: number; y: number } {
     const hash = hashString(agentId);
-    const segmentWidth = TERRARIUM_DIMENSIONS.width / Math.max(total, 1);
+    const segmentWidth = STATION_DIMENSIONS.width / Math.max(total, 1);
     const baseX = segmentWidth * index + segmentWidth / 2;
     const xJitter = (hash % 41) - 20;
-    const yBase = TERRARIUM_DIMENSIONS.height * 0.72;
+    const yBase = STATION_DIMENSIONS.height * 0.72;
     const yJitter = (hash % 27) - 13;
 
     return {
-      x: clamp(baseX + xJitter, 48, TERRARIUM_DIMENSIONS.width - 48),
-      y: clamp(yBase + yJitter, 220, TERRARIUM_DIMENSIONS.height - 52)
+      x: clamp(baseX + xJitter, 48, STATION_DIMENSIONS.width - 48),
+      y: clamp(yBase + yJitter, 220, STATION_DIMENSIONS.height - 52)
     };
   }
 }

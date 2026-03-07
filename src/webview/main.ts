@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
-import { clampMaxFps, MAX_FPS, TERRARIUM_DIMENSIONS } from '@shared/constants';
+import { clampMaxFps, MAX_FPS, STATION_DIMENSIONS } from '@shared/constants';
 import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '@shared/types';
 import { BootScene } from './scenes/BootScene';
-import { TerrariumScene } from './scenes/TerrariumScene';
-import { getTerrariumState, initializeTerrariumState } from './state/context';
+import { StationScene } from './scenes/StationScene';
+import { getStationState, initializeStationState } from './state/context';
 
 interface VsCodeApi {
   /**
@@ -17,19 +17,19 @@ declare function acquireVsCodeApi<T = unknown>(): T;
 const vscodeApi = acquireVsCodeApi<VsCodeApi>();
 installCrashOverlay();
 
-initializeTerrariumState((message) => {
+initializeStationState((message) => {
   vscodeApi.postMessage(message);
 });
 
 window.addEventListener('message', (event: MessageEvent<ExtensionToWebviewMessage>) => {
-  getTerrariumState().handleMessage(event.data);
+  getStationState().handleMessage(event.data);
 });
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'app',
-  width: TERRARIUM_DIMENSIONS.width,
-  height: TERRARIUM_DIMENSIONS.height,
+  width: STATION_DIMENSIONS.width,
+  height: STATION_DIMENSIONS.height,
   backgroundColor: '#101619',
   pixelArt: true,
   fps: {
@@ -37,10 +37,10 @@ const game = new Phaser.Game({
     limit: MAX_FPS,
     forceSetTimeOut: true
   },
-  scene: [BootScene, TerrariumScene]
+  scene: [BootScene, StationScene]
 });
 
-const state = getTerrariumState();
+const state = getStationState();
 const applyRuntimeFps = (): void => {
   const fps = clampMaxFps(state.getConfig().maxFps);
   game.loop.targetFps = fps;
@@ -61,14 +61,14 @@ vscodeApi.postMessage({ type: 'ready' });
 
 function installCrashOverlay(): void {
   const showOverlay = (message: string): void => {
-    const existing = document.getElementById('codeterrarium-error-overlay');
+    const existing = document.getElementById('codeorbit-error-overlay');
     if (existing !== null) {
       existing.textContent = message;
       return;
     }
 
     const overlay = document.createElement('pre');
-    overlay.id = 'codeterrarium-error-overlay';
+    overlay.id = 'codeorbit-error-overlay';
     overlay.textContent = message;
     overlay.style.position = 'fixed';
     overlay.style.inset = '0';
@@ -88,11 +88,11 @@ function installCrashOverlay(): void {
       event.error instanceof Error
         ? `${event.error.message}\n${event.error.stack ?? ''}`
         : `${event.message} (${event.filename}:${event.lineno})`;
-    showOverlay(`CodeTerrarium webview crashed:\n${detail}`);
+    showOverlay(`CodeOrbit webview crashed:\n${detail}`);
   });
 
   window.addEventListener('unhandledrejection', (event) => {
     const detail = event.reason instanceof Error ? event.reason.message : String(event.reason);
-    showOverlay(`CodeTerrarium webview unhandled rejection:\n${detail}`);
+    showOverlay(`CodeOrbit webview unhandled rejection:\n${detail}`);
   });
 }

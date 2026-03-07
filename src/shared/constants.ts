@@ -1,14 +1,14 @@
 import type {
   AgentAction,
-  CreatureState,
-  PersistedCreatureState,
-  TerrariumConfig
+  CrewState,
+  PersistedCrewState,
+  StationConfig
 } from './types';
 
 /**
- * Default render dimensions of the terrarium webview canvas.
+ * Default render dimensions of the station webview canvas.
  */
-export const TERRARIUM_DIMENSIONS = {
+export const STATION_DIMENSIONS = {
   width: 960,
   height: 540,
   tileSize: 16
@@ -27,14 +27,15 @@ export const MAX_FPS = 30 as const;
 /**
  * State duration hints in milliseconds.
  */
-export const STATE_DURATIONS: Readonly<Record<CreatureState, number>> = {
-  idle: 5000,
-  foraging: 3000,
-  working: 3500,
-  resting: 6000,
+export const STATE_DURATIONS: Readonly<Record<CrewState, number>> = {
+  standby: 5000,
+  scanning: 3000,
+  repairing: 3500,
+  docked: 6000,
   alert: 2500,
   celebrating: 3000,
-  distressed: 3500
+  damaged: 3500,
+  requesting_input: 7000
 };
 
 /**
@@ -50,7 +51,8 @@ export const XP_PER_ACTION: Readonly<Record<AgentAction, number>> = {
   idle: 0,
   error: 1,
   complete: 25,
-  deploy: 20
+  deploy: 20,
+  input_request: 1
 };
 
 /**
@@ -66,7 +68,8 @@ export const MOOD_DELTA_PER_ACTION: Readonly<Record<AgentAction, number>> = {
   idle: -1,
   error: -12,
   complete: 10,
-  deploy: 8
+  deploy: 8,
+  input_request: -2
 };
 
 /**
@@ -75,27 +78,27 @@ export const MOOD_DELTA_PER_ACTION: Readonly<Record<AgentAction, number>> = {
 export const LEVEL_THRESHOLDS = [0, 50, 120, 220, 360, 540, 760, 1020] as const;
 
 /**
- * Baseline persisted state for newly discovered creatures.
+ * Baseline persisted state for newly discovered crew units.
  */
-export const DEFAULT_PERSISTED_CREATURE_STATE: PersistedCreatureState = {
+export const DEFAULT_PERSISTED_CREW_STATE: PersistedCrewState = {
   xp: 0,
   level: 1,
   mood: 0,
-  lastState: 'idle',
+  lastState: 'standby',
   updatedAt: 0
 };
 
 /**
  * Default runtime config when settings are incomplete.
  */
-export const DEFAULT_TERRARIUM_CONFIG: TerrariumConfig = {
+export const DEFAULT_STATION_CONFIG: StationConfig = {
   maxFps: MAX_FPS,
   agents: [],
-  weatherEnabled: true
+  stationEffectsEnabled: true
 };
 
 /**
- * Clamps a runtime FPS value to supported terrarium boundaries.
+ * Clamps a runtime FPS value to supported station boundaries.
  *
  * @param value Candidate frame rate.
  * @returns Sanitized frame rate.
@@ -119,7 +122,7 @@ export const MOOD_BOUNDS = {
 /**
  * Persisted state schema version.
  */
-export const PERSISTED_SCHEMA_VERSION = 1 as const;
+export const PERSISTED_SCHEMA_VERSION = 2 as const;
 
 /**
  * Debounce duration for writing state snapshots to disk.

@@ -1,14 +1,14 @@
 import {
-  CREATURE_TEXTURE_ASSETS,
-  TERRARIUM_AUDIO_ASSETS,
-  TERRARIUM_TILEMAP_KEY,
-  TERRARIUM_TILEMAP_URL,
+  CREW_TEXTURE_ASSETS,
+  STATION_AUDIO_ASSETS,
+  STATION_TILEMAP_KEY,
+  STATION_TILEMAP_URL,
   TILE_TEXTURE_ASSETS
 } from '../assets/manifest';
 import { toPhaserSafeDataUri } from '../assets/dataUri';
 
 /**
- * Boot scene responsible for preloading terrarium assets.
+ * Boot scene responsible for preloading station assets.
  */
 export class BootScene extends Phaser.Scene {
   /**
@@ -29,16 +29,16 @@ export class BootScene extends Phaser.Scene {
       });
     }
 
-    for (const creatureTexture of CREATURE_TEXTURE_ASSETS) {
-      this.load.svg(creatureTexture.key, toPhaserSafeDataUri(creatureTexture.url), {
-        width: creatureTexture.width,
-        height: creatureTexture.height
+    for (const crewTexture of CREW_TEXTURE_ASSETS) {
+      this.load.svg(crewTexture.key, toPhaserSafeDataUri(crewTexture.url), {
+        width: crewTexture.width,
+        height: crewTexture.height
       });
     }
 
-    this.load.json(TERRARIUM_TILEMAP_KEY, toPhaserSafeDataUri(TERRARIUM_TILEMAP_URL));
+    this.load.json(STATION_TILEMAP_KEY, toPhaserSafeDataUri(STATION_TILEMAP_URL));
 
-    for (const track of TERRARIUM_AUDIO_ASSETS) {
+    for (const track of STATION_AUDIO_ASSETS) {
       this.load.audio(track.key, [toPhaserSafeDataUri(track.url)]);
     }
   }
@@ -47,30 +47,38 @@ export class BootScene extends Phaser.Scene {
    * Creates runtime animation metadata and starts the main scene.
    */
   create(): void {
-    this.createCreatureAnimations();
-    this.scene.start('TerrariumScene');
+    this.createCrewAnimations();
+    this.scene.start('StationScene');
   }
 
-  private createCreatureAnimations(): void {
-    const creatureTypes = ['fox', 'otter', 'slime', 'bird'] as const;
+  private createCrewAnimations(): void {
+    const crewRoles = ['engineer', 'pilot', 'analyst', 'security'] as const;
+    const animatedStates = [
+      'scanning',
+      'repairing',
+      'alert',
+      'celebrating',
+      'damaged',
+      'requesting_input'
+    ] as const;
 
-    for (const type of creatureTypes) {
-      if (!this.anims.exists(`${type}-walk`)) {
+    for (const role of crewRoles) {
+      if (!this.anims.exists(`${role}-walk`)) {
         this.anims.create({
-          key: `${type}-walk`,
+          key: `${role}-walk`,
           frames: [
-            { key: `creature-${type}-walk-a` },
-            { key: `creature-${type}-walk-b` },
-            { key: `creature-${type}-walk-a` },
-            { key: `creature-${type}-walk-b` }
+            { key: `crew-${role}-walk-a` },
+            { key: `crew-${role}-walk-b` },
+            { key: `crew-${role}-walk-a` },
+            { key: `crew-${role}-walk-b` }
           ],
           frameRate: 8,
           repeat: -1
         });
       }
 
-      for (const state of ['working', 'foraging', 'alert', 'celebrating', 'distressed'] as const) {
-        const stateKey = `${type}-${state}`;
+      for (const state of animatedStates) {
+        const stateKey = `${role}-${state}`;
         if (this.anims.exists(stateKey)) {
           continue;
         }
@@ -78,10 +86,10 @@ export class BootScene extends Phaser.Scene {
         this.anims.create({
           key: stateKey,
           frames: [
-            { key: `creature-${type}-walk-a` },
-            { key: `creature-${type}-walk-b` },
-            { key: `creature-${type}-walk-a` },
-            { key: `creature-${type}-walk-b` }
+            { key: `crew-${role}-walk-a` },
+            { key: `crew-${role}-walk-b` },
+            { key: `crew-${role}-walk-a` },
+            { key: `crew-${role}-walk-b` }
           ],
           frameRate: state === 'alert' ? 11 : 8,
           repeat: -1

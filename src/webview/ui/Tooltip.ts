@@ -1,5 +1,5 @@
-import { TERRARIUM_DIMENSIONS } from '@shared/constants';
-import type { Creature } from '../entities/Creature';
+import { STATION_DIMENSIONS } from '@shared/constants';
+import type { CrewUnit } from '../entities/CrewUnit';
 
 const TOOLTIP_PADDING = 8;
 const TOOLTIP_GAP = 6;
@@ -46,7 +46,7 @@ export class Tooltip {
     });
     this.title.setDepth(53);
     this.title.setVisible(false);
-    this.title.setShadow(0, 1, '#022a33', 3, false, true);
+    this.title.setShadow(0, 1, '#021522', 3, false, true);
 
     this.body = scene.add.text(0, 0, '', {
       fontFamily: '"Trebuchet MS", "Lucida Sans Unicode", sans-serif',
@@ -56,26 +56,26 @@ export class Tooltip {
     });
     this.body.setDepth(53);
     this.body.setVisible(false);
-    this.body.setShadow(0, 1, '#022a33', 2, false, true);
+    this.body.setShadow(0, 1, '#021522', 2, false, true);
   }
 
   /**
-   * Syncs tracked hover/selection references with active creatures.
+   * Syncs tracked hover/selection references with active crew units.
    *
-   * @param creatures Active creature map.
+   * @param crewUnits Active crew map.
    */
-  syncCreatures(creatures: Map<string, Creature>): void {
-    if (this.hoveredAgentId !== null && !creatures.has(this.hoveredAgentId)) {
+  syncCrewUnits(crewUnits: Map<string, CrewUnit>): void {
+    if (this.hoveredAgentId !== null && !crewUnits.has(this.hoveredAgentId)) {
       this.hoveredAgentId = null;
     }
 
-    if (this.selectedAgentId !== null && !creatures.has(this.selectedAgentId)) {
+    if (this.selectedAgentId !== null && !crewUnits.has(this.selectedAgentId)) {
       this.selectedAgentId = null;
     }
   }
 
   /**
-   * Sets currently hovered creature id.
+   * Sets currently hovered crew id.
    *
    * @param agentId Hovered agent id or null.
    */
@@ -84,7 +84,7 @@ export class Tooltip {
   }
 
   /**
-   * Clears hover state when leaving a specific creature.
+   * Clears hover state when leaving a specific crew unit.
    *
    * @param agentId Agent id being exited.
    */
@@ -95,16 +95,7 @@ export class Tooltip {
   }
 
   /**
-   * Toggles selected creature id.
-   *
-   * @param agentId Agent id to select or deselect.
-   */
-  toggleSelectedAgent(agentId: string): void {
-    this.selectedAgentId = this.selectedAgentId === agentId ? null : agentId;
-  }
-
-  /**
-   * Sets selected creature id.
+   * Sets selected crew id.
    *
    * @param agentId Selected agent id or null.
    */
@@ -113,46 +104,38 @@ export class Tooltip {
   }
 
   /**
-   * Gets currently selected creature id.
-   *
-   * @returns Selected agent id or null.
-   */
-  getSelectedAgent(): string | null {
-    return this.selectedAgentId;
-  }
-
-  /**
    * Updates tooltip content and screen position.
    *
-   * @param creatures Active creature map.
+   * @param crewUnits Active crew map.
    */
-  update(creatures: Map<string, Creature>): void {
+  update(crewUnits: Map<string, CrewUnit>): void {
     const visibleAgentId = resolveTooltipAgentId(this.hoveredAgentId, this.selectedAgentId);
     if (visibleAgentId === null) {
       this.hide();
       return;
     }
 
-    const creature = creatures.get(visibleAgentId);
-    if (creature === undefined) {
+    const crew = crewUnits.get(visibleAgentId);
+    if (crew === undefined) {
       this.hide();
       return;
     }
 
     const pinned = this.selectedAgentId === visibleAgentId && this.hoveredAgentId === null;
-    const snapshot = creature.getSnapshot();
+    const snapshot = crew.getSnapshot();
     const moodLabel = snapshot.mood > 0 ? `+${snapshot.mood}` : `${snapshot.mood}`;
+    const requestLine = snapshot.requestingInput ? '\nREQUESTING INPUT' : '';
 
-    this.title.setText(`${creature.getAgent().name}${pinned ? ' [selected]' : ''}`);
+    this.title.setText(`${crew.getAgent().name}${pinned ? ' [selected]' : ''}`);
     this.body.setText(
-      `State: ${snapshot.state}\nLevel: ${snapshot.level}  XP: ${snapshot.xp}\nMood: ${moodLabel}\nTab: cycle  Arrow/WASD: move  Esc: clear`
+      `State: ${snapshot.state}\nLevel: ${snapshot.level}  XP: ${snapshot.xp}\nMood: ${moodLabel}${requestLine}\nTab: cycle  Arrow/WASD: move  Esc: clear`
     );
     this.title.setVisible(true);
     this.body.setVisible(true);
 
     const width = Math.max(this.title.width, this.body.width) + TOOLTIP_PADDING * 2;
     const height = this.title.height + this.body.height + TOOLTIP_PADDING * 2 + TOOLTIP_GAP;
-    const position = this.computePosition(creature, width, height);
+    const position = this.computePosition(crew, width, height);
 
     this.title.setPosition(position.x + TOOLTIP_PADDING, position.y + TOOLTIP_PADDING);
     this.body.setPosition(
@@ -161,7 +144,7 @@ export class Tooltip {
     );
 
     this.panel.clear();
-    this.panel.fillStyle(0x184f63, 0.95);
+    this.panel.fillStyle(0x143649, 0.95);
     this.panel.lineStyle(2, 0x83ffe4, 0.95);
     this.panel.fillRoundedRect(position.x, position.y, width, height, 6);
     this.panel.strokeRoundedRect(position.x, position.y, width, height, 6);
@@ -178,14 +161,14 @@ export class Tooltip {
     this.body.destroy();
   }
 
-  private computePosition(creature: Creature, width: number, height: number): { x: number; y: number } {
-    const { x, y } = creature.getPosition();
+  private computePosition(crew: CrewUnit, width: number, height: number): { x: number; y: number } {
+    const { x, y } = crew.getPosition();
     const anchorX = x + 26;
     const anchorY = y - 106;
 
     return {
-      x: clamp(anchorX, TOOLTIP_MARGIN, TERRARIUM_DIMENSIONS.width - width - TOOLTIP_MARGIN),
-      y: clamp(anchorY, TOOLTIP_MARGIN, TERRARIUM_DIMENSIONS.height - height - TOOLTIP_MARGIN)
+      x: clamp(anchorX, TOOLTIP_MARGIN, STATION_DIMENSIONS.width - width - TOOLTIP_MARGIN),
+      y: clamp(anchorY, TOOLTIP_MARGIN, STATION_DIMENSIONS.height - height - TOOLTIP_MARGIN)
     };
   }
 

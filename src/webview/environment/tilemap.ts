@@ -1,7 +1,7 @@
 /**
- * JSON tilemap data used by terrarium background rendering.
+ * JSON tilemap data used by station background rendering.
  */
-export interface TerrariumTilemapAsset {
+export interface StationTilemapAsset {
   /** Tile size used for map coordinates. */
   tileSize: number;
   /** Number of tile columns. */
@@ -22,21 +22,25 @@ export interface TerrariumTilemapAsset {
  * @returns Texture key.
  */
 export function pickTileTextureFallback(row: number, col: number): string {
-  const noise = (row * 17 + col * 29) % 100;
+  const noise = (row * 19 + col * 31) % 100;
 
-  if (row < 8) {
-    return noise > 72 ? 'tile-water' : 'tile-grass';
+  if (row < 6) {
+    return noise > 50 ? 'tile-viewport' : 'tile-conduit';
   }
 
-  if (row > 24) {
-    return noise > 45 ? 'tile-dirt' : 'tile-rock';
+  if (row > 28) {
+    return noise > 62 ? 'tile-grate' : 'tile-deck';
   }
 
   if (noise > 86) {
-    return 'tile-rock';
+    return 'tile-conduit';
   }
 
-  return 'tile-grass';
+  if (noise > 64) {
+    return 'tile-grate';
+  }
+
+  return 'tile-deck';
 }
 
 /**
@@ -47,7 +51,7 @@ export function pickTileTextureFallback(row: number, col: number): string {
  * @param col Tile column index.
  * @returns Texture key resolved from legend or fallback pattern.
  */
-export function resolveTileFromMap(map: TerrariumTilemapAsset, row: number, col: number): string {
+export function resolveTileFromMap(map: StationTilemapAsset, row: number, col: number): string {
   const line = map.rows[row];
   if (line === undefined) {
     return pickTileTextureFallback(row, col);
@@ -67,7 +71,7 @@ export function resolveTileFromMap(map: TerrariumTilemapAsset, row: number, col:
  * @param value Unknown JSON payload.
  * @returns Parsed tilemap asset or null when invalid.
  */
-export function readTilemapAsset(value: unknown): TerrariumTilemapAsset | null {
+export function readTilemapAsset(value: unknown): StationTilemapAsset | null {
   if (typeof value !== 'object' || value === null) {
     return null;
   }

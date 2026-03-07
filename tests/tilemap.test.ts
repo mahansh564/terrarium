@@ -11,7 +11,7 @@ describe('readTilemapAsset', () => {
       tileSize: 16.9,
       width: 60.8,
       height: 34.2,
-      legend: { g: 'tile-grass', r: 'tile-rock' },
+      legend: { g: 'tile-deck', r: 'tile-conduit' },
       rows: ['grg', 'rgg']
     });
 
@@ -19,7 +19,7 @@ describe('readTilemapAsset', () => {
     expect(parsed?.tileSize).toBe(16);
     expect(parsed?.width).toBe(60);
     expect(parsed?.height).toBe(34);
-    expect(parsed?.legend.g).toBe('tile-grass');
+    expect(parsed?.legend.g).toBe('tile-deck');
   });
 
   it('returns null for invalid payloads', () => {
@@ -43,7 +43,7 @@ describe('resolveTileFromMap', () => {
       tileSize: 16,
       width: 2,
       height: 2,
-      legend: { g: 'tile-grass', w: 'tile-water' },
+      legend: { g: 'tile-deck', w: 'tile-viewport' },
       rows: ['gw', 'wg']
     });
 
@@ -51,8 +51,8 @@ describe('resolveTileFromMap', () => {
       throw new Error('Expected map to parse.');
     }
 
-    expect(resolveTileFromMap(map, 0, 0)).toBe('tile-grass');
-    expect(resolveTileFromMap(map, 0, 1)).toBe('tile-water');
+    expect(resolveTileFromMap(map, 0, 0)).toBe('tile-deck');
+    expect(resolveTileFromMap(map, 0, 1)).toBe('tile-viewport');
   });
 
   it('falls back to procedural tile when cell is missing', () => {
@@ -60,7 +60,7 @@ describe('resolveTileFromMap', () => {
       tileSize: 16,
       width: 1,
       height: 1,
-      legend: { g: 'tile-grass' },
+      legend: { g: 'tile-deck' },
       rows: ['g']
     });
 

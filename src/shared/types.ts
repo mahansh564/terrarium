@@ -11,19 +11,21 @@ export type AgentAction =
   | 'idle'
   | 'error'
   | 'complete'
-  | 'deploy';
+  | 'deploy'
+  | 'input_request';
 
 /**
- * Runtime behavior states for creature entities.
+ * Runtime behavior states for crew units.
  */
-export type CreatureState =
-  | 'idle'
-  | 'foraging'
-  | 'working'
-  | 'resting'
+export type CrewState =
+  | 'standby'
+  | 'scanning'
+  | 'repairing'
+  | 'docked'
   | 'alert'
   | 'celebrating'
-  | 'distressed';
+  | 'damaged'
+  | 'requesting_input';
 
 /**
  * Serialized scalar metadata allowed in event payloads.
@@ -105,6 +107,14 @@ export interface IdleAgentEvent extends AgentEventBase {
 }
 
 /**
+ * Event emitted when an agent asks for user input.
+ */
+export interface InputRequestAgentEvent extends AgentEventBase {
+  kind: 'input_request';
+  prompt?: string;
+}
+
+/**
  * Event emitted when an agent encounters an error.
  */
 export interface ErrorAgentEvent extends AgentEventBase {
@@ -139,17 +149,18 @@ export type AgentEvent =
   | TestFailAgentEvent
   | TerminalAgentEvent
   | IdleAgentEvent
+  | InputRequestAgentEvent
   | ErrorAgentEvent
   | CompleteAgentEvent
   | DeployAgentEvent;
 
 /**
- * Creature archetypes available in v1.
+ * Crew roles available in v1.
  */
-export type CreatureType = 'fox' | 'otter' | 'slime' | 'bird';
+export type CrewRole = 'engineer' | 'pilot' | 'analyst' | 'security';
 
 /**
- * User-configured transcript source and creature settings for an agent.
+ * User-configured transcript source and crew role settings for an agent.
  */
 export interface AgentConfig {
   /** Stable identifier for this tracked agent. */
@@ -160,8 +171,8 @@ export interface AgentConfig {
   sourceAdapter?: string;
   /** Absolute transcript path (file or directory). */
   transcriptPath: string;
-  /** Creature archetype used for rendering. */
-  creatureType: CreatureType;
+  /** Crew role used for rendering. */
+  crewRole: CrewRole;
   /** Optional hex color override for tinting. */
   color?: string;
 }
@@ -169,39 +180,39 @@ export interface AgentConfig {
 /**
  * Extension and webview runtime configuration values.
  */
-export interface TerrariumConfig {
+export interface StationConfig {
   /** Maximum frame rate for rendering. */
   maxFps: number;
   /** Configured tracked agents. */
   agents: AgentConfig[];
-  /** Whether weather effects should be enabled. */
-  weatherEnabled: boolean;
+  /** Whether station environment effects should be enabled. */
+  stationEffectsEnabled: boolean;
 }
 
 /**
- * Individual creature stats persisted across sessions.
+ * Individual crew stats persisted across sessions.
  */
-export interface PersistedCreatureState {
+export interface PersistedCrewState {
   /** Accumulated experience points. */
   xp: number;
-  /** Derived creature level. */
+  /** Derived crew level. */
   level: number;
   /** Mood score from -100 to 100. */
   mood: number;
   /** Last recorded finite-state-machine state. */
-  lastState: CreatureState;
+  lastState: CrewState;
   /** Last update timestamp in milliseconds. */
   updatedAt: number;
 }
 
 /**
- * Persisted workspace payload for all creatures.
+ * Persisted workspace payload for all crew units.
  */
 export interface PersistedStatsFile {
   /** Schema version for migrations. */
-  version: 1;
-  /** Per-agent creature state values. */
-  creatures: Record<string, PersistedCreatureState>;
+  version: 2;
+  /** Per-agent crew state values. */
+  crew: Record<string, PersistedCrewState>;
 }
 
 /**
@@ -228,8 +239,8 @@ export interface HealthSignal {
  */
 export interface InitMessagePayload {
   /** Runtime config values resolved from settings. */
-  config: TerrariumConfig;
-  /** Persisted creature stats loaded from workspace. */
+  config: StationConfig;
+  /** Persisted crew stats loaded from workspace. */
   persisted: PersistedStatsFile;
 }
 

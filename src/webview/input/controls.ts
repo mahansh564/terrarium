@@ -23,7 +23,7 @@ export interface Vector2D {
 }
 
 /**
- * Axis-aligned movement bounds for a creature.
+ * Axis-aligned movement bounds for a crew unit.
  */
 export interface MovementBounds {
   /** Minimum x coordinate. */
@@ -62,7 +62,7 @@ export function resolveMovementVector(input: DirectionalInputState): Vector2D {
  * @param agentIds Ordered list of active agent ids.
  * @param currentSelectedAgentId Currently selected agent id.
  * @param direction Selection direction.
- * @returns Next selected id, or null when no creatures exist.
+ * @returns Next selected id, or null when no crew units exist.
  */
 export function advanceSelection(
   agentIds: readonly string[],
@@ -97,7 +97,7 @@ export function selectAgentByIndex(agentIds: readonly string[], zeroBasedIndex: 
 }
 
 /**
- * Clamps a creature position to movement bounds.
+ * Clamps a crew position to movement bounds.
  *
  * @param position Candidate position.
  * @param bounds Allowed movement bounds.

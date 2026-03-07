@@ -2,14 +2,14 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import * as vscode from 'vscode';
 import {
-  DEFAULT_PERSISTED_CREATURE_STATE,
+  DEFAULT_PERSISTED_CREW_STATE,
   PERSIST_DEBOUNCE_MS,
   PERSISTED_SCHEMA_VERSION
 } from '@shared/constants';
-import type { PersistedCreatureState, PersistedStatsFile } from '@shared/types';
+import type { PersistedCrewState, PersistedStatsFile } from '@shared/types';
 
 /**
- * Handles workspace-local persistence for creature stats.
+ * Handles workspace-local persistence for crew stats.
  */
 export class WorkspaceStatsStore {
   private readonly statsFilePath: string;
@@ -23,11 +23,11 @@ export class WorkspaceStatsStore {
    */
   constructor(context: vscode.ExtensionContext) {
     const rootPath = resolveWorkspaceRootPath(context);
-    this.statsFilePath = join(rootPath, '.codeterrarium', 'stats.json');
+    this.statsFilePath = join(rootPath, '.codeorbit', 'stats.json');
   }
 
   /**
-   * Loads persisted creature stats from workspace storage.
+   * Loads persisted crew stats from workspace storage.
    *
    * @returns Persisted stats payload or an empty baseline object.
    */
@@ -120,31 +120,31 @@ export function sanitizePersistedStatsFile(value: unknown): PersistedStatsFile {
   }
 
   const record = value as Record<string, unknown>;
-  const creaturesRaw =
-    typeof record.creatures === 'object' && record.creatures !== null
-      ? (record.creatures as Record<string, unknown>)
+  const rawCrew =
+    typeof record.crew === 'object' && record.crew !== null
+      ? (record.crew as Record<string, unknown>)
       : {};
 
-  const creatures: Record<string, PersistedCreatureState> = {};
+  const crew: Record<string, PersistedCrewState> = {};
 
-  for (const [agentId, creatureRaw] of Object.entries(creaturesRaw)) {
-    creatures[agentId] = sanitizePersistedCreatureState(creatureRaw);
+  for (const [agentId, crewRaw] of Object.entries(rawCrew)) {
+    crew[agentId] = sanitizePersistedCrewState(crewRaw);
   }
 
   return {
     version: PERSISTED_SCHEMA_VERSION,
-    creatures
+    crew
   };
 }
 
-function sanitizePersistedCreatureState(value: unknown): PersistedCreatureState {
+function sanitizePersistedCrewState(value: unknown): PersistedCrewState {
   if (typeof value !== 'object' || value === null) {
-    return { ...DEFAULT_PERSISTED_CREATURE_STATE, updatedAt: Date.now() };
+    return { ...DEFAULT_PERSISTED_CREW_STATE, updatedAt: Date.now() };
   }
 
   const record = value as Record<string, unknown>;
-  const moodRaw = typeof record.mood === 'number' ? record.mood : DEFAULT_PERSISTED_CREATURE_STATE.mood;
-  const stateRaw = typeof record.lastState === 'string' ? record.lastState : 'idle';
+  const moodRaw = typeof record.mood === 'number' ? record.mood : DEFAULT_PERSISTED_CREW_STATE.mood;
+  const stateRaw = typeof record.lastState === 'string' ? record.lastState : 'standby';
 
   return {
     xp: typeof record.xp === 'number' && Number.isFinite(record.xp) ? Math.max(0, record.xp) : 0,
@@ -153,7 +153,7 @@ function sanitizePersistedCreatureState(value: unknown): PersistedCreatureState 
         ? Math.max(1, Math.trunc(record.level))
         : 1,
     mood: Number.isFinite(moodRaw) ? Math.max(-100, Math.min(100, moodRaw)) : 0,
-    lastState: isCreatureState(stateRaw) ? stateRaw : 'idle',
+    lastState: isCrewState(stateRaw) ? stateRaw : 'standby',
     updatedAt:
       typeof record.updatedAt === 'number' && Number.isFinite(record.updatedAt)
         ? Math.trunc(record.updatedAt)
@@ -161,22 +161,23 @@ function sanitizePersistedCreatureState(value: unknown): PersistedCreatureState 
   };
 }
 
-function isCreatureState(value: string): value is PersistedCreatureState['lastState'] {
+function isCrewState(value: string): value is PersistedCrewState['lastState'] {
   return [
-    'idle',
-    'foraging',
-    'working',
-    'resting',
+    'standby',
+    'scanning',
+    'repairing',
+    'docked',
     'alert',
     'celebrating',
-    'distressed'
+    'damaged',
+    'requesting_input'
   ].includes(value);
 }
 
 function emptyPersistedStatsFile(): PersistedStatsFile {
   return {
     version: PERSISTED_SCHEMA_VERSION,
-    creatures: {}
+    crew: {}
   };
 }
 

@@ -14,7 +14,7 @@ export default defineConfig({
     assetsInlineLimit: 0,
     lib: {
       entry: resolve(__dirname, 'src/webview/main.ts'),
-      name: 'CodeTerrariumWebview',
+      name: 'CodeOrbitWebview',
       formats: ['iife'],
       fileName: () => 'main.js'
     },

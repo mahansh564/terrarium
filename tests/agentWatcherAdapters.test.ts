@@ -147,7 +147,7 @@ function createAgent(overrides: Partial<AgentConfig>): AgentConfig {
     id: 'agent-1',
     name: 'Agent One',
     transcriptPath: '/tmp/agent-1',
-    creatureType: 'fox',
+    crewRole: 'engineer',
     ...overrides
   };
 }

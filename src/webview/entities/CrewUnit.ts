@@ -9,16 +9,16 @@ import type {
   AgentAction,
   AgentConfig,
   AgentEvent,
-  CreatureState,
-  PersistedCreatureState
+  CrewState,
+  PersistedCrewState
 } from '@shared/types';
 
 /**
- * Internal runtime snapshot for creature logic.
+ * Internal runtime snapshot for crew logic.
  */
-export interface CreatureSnapshot {
+export interface CrewSnapshot {
   /** Current finite-state-machine state. */
-  state: CreatureState;
+  state: CrewState;
   /** Accumulated XP. */
   xp: number;
   /** Current level. */
@@ -27,50 +27,54 @@ export interface CreatureSnapshot {
   mood: number;
   /** Last update timestamp in milliseconds. */
   updatedAt: number;
+  /** Whether the crew unit is actively requesting user input. */
+  requestingInput: boolean;
 }
 
 /**
- * Maps an action to the target creature state.
+ * Maps an action to the target crew state.
  *
  * @param action Normalized agent action.
- * @returns Creature state mapped from action semantics.
+ * @returns Crew state mapped from action semantics.
  */
-export function deriveStateFromAction(action: AgentAction): CreatureState {
+export function deriveStateFromAction(action: AgentAction): CrewState {
   switch (action) {
     case 'read':
-      return 'foraging';
+      return 'scanning';
     case 'write':
-      return 'working';
+      return 'repairing';
     case 'test_run':
     case 'terminal':
       return 'alert';
     case 'idle':
-      return 'resting';
+      return 'docked';
     case 'error':
     case 'test_fail':
-      return 'distressed';
+      return 'damaged';
     case 'test_pass':
     case 'complete':
     case 'deploy':
       return 'celebrating';
+    case 'input_request':
+      return 'requesting_input';
     default:
-      return 'idle';
+      return 'standby';
   }
 }
 
 /**
- * Applies one action to creature progress metrics.
+ * Applies one action to crew progress metrics.
  *
- * @param snapshot Existing creature snapshot.
+ * @param snapshot Existing crew snapshot.
  * @param action Incoming action.
  * @param now Current timestamp in milliseconds.
- * @returns Updated creature snapshot.
+ * @returns Updated crew snapshot.
  */
 export function applyActionToSnapshot(
-  snapshot: CreatureSnapshot,
+  snapshot: CrewSnapshot,
   action: AgentAction,
   now: number
-): CreatureSnapshot {
+): CrewSnapshot {
   const xp = snapshot.xp + XP_PER_ACTION[action];
   const moodUnclamped = snapshot.mood + MOOD_DELTA_PER_ACTION[action];
 
@@ -85,7 +89,7 @@ export function applyActionToSnapshot(
 }
 
 /**
- * Computes creature level from XP value.
+ * Computes crew level from XP value.
  *
  * @param xp Experience points.
  * @returns Derived level.
@@ -103,23 +107,26 @@ export function levelFromXp(xp: number): number {
 }
 
 /**
- * Creature entity with sprite and finite-state-machine behavior.
+ * Crew unit entity with sprite and finite-state-machine behavior.
  */
-export class Creature {
+export class CrewUnit {
   private readonly sprite: Phaser.GameObjects.Sprite;
   private readonly selectionRing: Phaser.GameObjects.Arc;
-  private snapshot: CreatureSnapshot;
+  private readonly commsHalo: Phaser.GameObjects.Arc;
+  private readonly commsCore: Phaser.GameObjects.Arc;
+  private readonly commsText: Phaser.GameObjects.Text;
+  private snapshot: CrewSnapshot;
   private selected = false;
   private manualMovement = false;
 
   /**
-   * Creates a creature entity.
+   * Creates a crew unit entity.
    *
-   * @param scene Phaser scene hosting this creature.
-   * @param agent Agent config represented by this creature.
+   * @param scene Phaser scene hosting this crew unit.
+   * @param agent Agent config represented by this crew unit.
    * @param x Spawn x coordinate.
    * @param y Spawn y coordinate.
-   * @param textureKey Creature base texture key.
+   * @param textureKey Crew texture key prefix.
    * @param persisted Persisted state loaded from workspace.
    */
   constructor(
@@ -128,7 +135,7 @@ export class Creature {
     x: number,
     y: number,
     textureKey: string,
-    persisted: PersistedCreatureState
+    persisted: PersistedCrewState
   ) {
     this.sprite = scene.add.sprite(x, y, `${textureKey}-idle`);
     this.sprite.setOrigin(0.5, 0.5);
@@ -136,11 +143,30 @@ export class Creature {
     this.sprite.setDepth(20);
     this.sprite.setInteractive({ useHandCursor: true });
 
-    this.selectionRing = scene.add.circle(x, y + 14, 14, 0x51f6ff, 0.14);
-    this.selectionRing.setStrokeStyle(2, 0xc8ff7a, 0.9);
+    this.selectionRing = scene.add.circle(x, y + 14, 14, 0x66d9ff, 0.14);
+    this.selectionRing.setStrokeStyle(2, 0x8fffe0, 0.9);
     this.selectionRing.setScale(1.4, 0.58);
     this.selectionRing.setDepth(18);
     this.selectionRing.setVisible(false);
+
+    this.commsHalo = scene.add.circle(x + 17, y - 25, 8, 0x74e9ff, 0.18);
+    this.commsHalo.setStrokeStyle(2, 0xb8fdff, 0.9);
+    this.commsHalo.setDepth(33);
+    this.commsHalo.setVisible(false);
+
+    this.commsCore = scene.add.circle(x + 17, y - 25, 4, 0x74e9ff, 0.95);
+    this.commsCore.setDepth(34);
+    this.commsCore.setVisible(false);
+
+    this.commsText = scene.add.text(x + 17, y - 25, '?', {
+      fontFamily: '"Trebuchet MS", "Lucida Sans Unicode", sans-serif',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#00131f'
+    });
+    this.commsText.setOrigin(0.5);
+    this.commsText.setDepth(35);
+    this.commsText.setVisible(false);
 
     if (agent.color !== undefined) {
       this.sprite.setTint(parseHexColor(agent.color));
@@ -151,21 +177,35 @@ export class Creature {
       xp: persisted.xp,
       level: persisted.level,
       mood: persisted.mood,
-      updatedAt: persisted.updatedAt
+      updatedAt: persisted.updatedAt,
+      requestingInput: persisted.lastState === 'requesting_input'
     };
 
     this.playStateAnimation(this.snapshot.state);
+    this.updateCommsBeacon(this.snapshot.updatedAt);
   }
 
   /**
-   * Applies one normalized event to this creature.
+   * Applies one normalized event to this crew unit.
    *
    * @param event Event payload.
    */
   applyEvent(event: AgentEvent): boolean {
     const next = applyActionToSnapshot(this.snapshot, event.kind, event.ts);
-    this.snapshot = next;
-    this.playStateAnimation(next.state);
+    let requestingInput = this.snapshot.requestingInput;
+
+    if (event.kind === 'input_request') {
+      requestingInput = true;
+    } else if (event.kind !== 'idle') {
+      requestingInput = false;
+    }
+
+    this.snapshot = {
+      ...next,
+      requestingInput
+    };
+    this.playStateAnimation(this.snapshot.state);
+    this.updateCommsBeacon(event.ts);
     return true;
   }
 
@@ -176,13 +216,14 @@ export class Creature {
    */
   tick(now: number): boolean {
     this.updateSelectionRing(now);
+    this.updateCommsBeacon(now);
 
     const duration = STATE_DURATIONS[this.snapshot.state];
-    if (now - this.snapshot.updatedAt <= duration) {
+    if (now - this.snapshot.updatedAt <= duration || this.snapshot.requestingInput) {
       return false;
     }
 
-    const fallbackState: CreatureState = this.snapshot.mood < -40 ? 'resting' : 'idle';
+    const fallbackState: CrewState = this.snapshot.mood < -40 ? 'docked' : 'standby';
     this.snapshot = {
       ...this.snapshot,
       state: fallbackState,
@@ -198,12 +239,12 @@ export class Creature {
    *
    * @returns Persisted state representation.
    */
-  toPersistedState(): PersistedCreatureState {
+  toPersistedState(): PersistedCrewState {
     return {
       xp: this.snapshot.xp,
       level: this.snapshot.level,
       mood: this.snapshot.mood,
-      lastState: this.snapshot.state,
+      lastState: this.snapshot.requestingInput ? 'requesting_input' : this.snapshot.state,
       updatedAt: this.snapshot.updatedAt
     };
   }
@@ -221,7 +262,7 @@ export class Creature {
   }
 
   /**
-   * Updates creature world position.
+   * Updates crew unit world position.
    *
    * @param x Next x coordinate.
    * @param y Next y coordinate.
@@ -229,6 +270,9 @@ export class Creature {
   setPosition(x: number, y: number): void {
     this.sprite.setPosition(x, y);
     this.selectionRing.setPosition(x, y + 14);
+    this.commsHalo.setPosition(x + 17, y - 25);
+    this.commsCore.setPosition(x + 17, y - 25);
+    this.commsText.setPosition(x + 17, y - 25);
   }
 
   /**
@@ -241,25 +285,25 @@ export class Creature {
   }
 
   /**
-   * Returns current creature state label.
+   * Returns current crew state label.
    *
    * @returns FSM state.
    */
-  getState(): CreatureState {
+  getState(): CrewState {
     return this.snapshot.state;
   }
 
   /**
    * Returns current progress metrics.
    *
-   * @returns Creature snapshot clone.
+   * @returns Crew snapshot clone.
    */
-  getSnapshot(): CreatureSnapshot {
+  getSnapshot(): CrewSnapshot {
     return { ...this.snapshot };
   }
 
   /**
-   * Sets whether this creature is selected by the user.
+   * Sets whether this crew unit is selected by the user.
    *
    * @param selected True when selected.
    */
@@ -287,7 +331,7 @@ export class Creature {
   }
 
   /**
-   * Registers a callback fired when pointer hovers this creature.
+   * Registers a callback fired when pointer hovers this crew unit.
    *
    * @param handler Hover callback.
    */
@@ -296,7 +340,7 @@ export class Creature {
   }
 
   /**
-   * Registers a callback fired when pointer leaves this creature.
+   * Registers a callback fired when pointer leaves this crew unit.
    *
    * @param handler Hover-end callback.
    */
@@ -305,7 +349,7 @@ export class Creature {
   }
 
   /**
-   * Registers a callback fired when this creature is clicked.
+   * Registers a callback fired when this crew unit is clicked.
    *
    * @param handler Click callback.
    */
@@ -318,16 +362,20 @@ export class Creature {
    */
   destroy(): void {
     this.selectionRing.destroy();
+    this.commsHalo.destroy();
+    this.commsCore.destroy();
+    this.commsText.destroy();
     this.sprite.destroy();
   }
 
-  private playStateAnimation(state: CreatureState): void {
+  private playStateAnimation(state: CrewState): void {
     if (this.manualMovement) {
-      this.sprite.play(`${this.agent.creatureType}-walk`, true);
+      this.sprite.play(`${this.agent.crewRole}-walk`, true);
       return;
     }
 
-    const animationKey = `${this.agent.creatureType}-${state}`;
+    const animationState = this.snapshot.requestingInput ? 'requesting_input' : state;
+    const animationKey = `${this.agent.crewRole}-${animationState}`;
     const hasAnimation = this.scene.anims.exists(animationKey);
 
     if (hasAnimation) {
@@ -335,13 +383,13 @@ export class Creature {
       return;
     }
 
-    if (state === 'resting' || state === 'idle') {
-      this.sprite.setTexture(`creature-${this.agent.creatureType}-idle`);
+    if (animationState === 'docked' || animationState === 'standby') {
+      this.sprite.setTexture(`crew-${this.agent.crewRole}-idle`);
       this.sprite.stop();
       return;
     }
 
-    this.sprite.play(`${this.agent.creatureType}-walk`, true);
+    this.sprite.play(`${this.agent.crewRole}-walk`, true);
   }
 
   private updateSelectionRing(now: number): void {
@@ -352,6 +400,21 @@ export class Creature {
     const pulse = 1 + Math.sin(now * 0.01) * 0.08;
     this.selectionRing.setScale(1.4 * pulse, 0.58 * pulse);
     this.selectionRing.setAlpha(0.84 + Math.sin(now * 0.014) * 0.12);
+  }
+
+  private updateCommsBeacon(now: number): void {
+    const visible = this.snapshot.requestingInput;
+    this.commsHalo.setVisible(visible);
+    this.commsCore.setVisible(visible);
+    this.commsText.setVisible(visible);
+    if (!visible) {
+      return;
+    }
+
+    const pulse = 1 + Math.sin(now * 0.02) * 0.2;
+    this.commsHalo.setScale(pulse);
+    this.commsHalo.setAlpha(0.28 + Math.sin(now * 0.015) * 0.12);
+    this.commsCore.setScale(1 + Math.sin(now * 0.03) * 0.08);
   }
 }
 

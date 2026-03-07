@@ -38,6 +38,7 @@ describe('parser', () => {
     expect(normalizeAction('Writing')).toBe('write');
     expect(normalizeAction('TEST_PASS')).toBe('test_pass');
     expect(normalizeAction('crash')).toBe('error');
+    expect(normalizeAction('needs_input')).toBe('input_request');
   });
 
   it('normalizes timestamps in seconds and ISO strings', () => {
@@ -58,5 +59,21 @@ describe('parser', () => {
   it('returns null when agent id missing and no fallback', () => {
     const line = JSON.stringify({ ts: 1710000000000, action: 'read' });
     expect(parseAgentEventLine(line)).toBeNull();
+  });
+
+  it('parses explicit input request event', () => {
+    const line = JSON.stringify({
+      ts: 1710000000000,
+      agentId: 'codex',
+      action: 'input_request',
+      prompt: 'Please choose deployment environment.'
+    });
+
+    const parsed = parseAgentEventLine(line);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.kind).toBe('input_request');
+    if (parsed?.kind === 'input_request') {
+      expect(parsed.prompt).toContain('deployment environment');
+    }
   });
 });

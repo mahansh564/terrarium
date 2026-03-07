@@ -26,6 +26,8 @@ interface RawTranscriptEvent {
   command?: unknown;
   exitCode?: unknown;
   reason?: unknown;
+  prompt?: unknown;
+  message?: unknown;
   errorMessage?: unknown;
   taskId?: unknown;
   environment?: unknown;
@@ -65,7 +67,11 @@ export function normalizeAction(actionRaw: unknown): AgentAction | null {
     complete: 'complete',
     completed: 'complete',
     deploy: 'deploy',
-    deployment: 'deploy'
+    deployment: 'deploy',
+    input_request: 'input_request',
+    needs_input: 'input_request',
+    ask_input: 'input_request',
+    blocked: 'input_request'
   };
 
   return mapping[normalized] ?? null;
@@ -198,6 +204,12 @@ export function parseAgentEventLine(
         ...base,
         kind: 'idle',
         ...withOptional('reason', asOptionalString(parsed.reason))
+      };
+    case 'input_request':
+      return {
+        ...base,
+        kind: 'input_request',
+        ...withOptional('prompt', asOptionalString(parsed.prompt ?? parsed.message ?? parsed.reason))
       };
     case 'error':
       return {

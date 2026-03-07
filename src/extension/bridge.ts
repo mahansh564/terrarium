@@ -121,11 +121,11 @@ function isPersistedStatsFile(value: unknown): value is PersistedStatsFile {
     return false;
   }
 
-  if (value.version !== 1) {
+  if (value.version !== 2) {
     return false;
   }
 
-  return isObject(value.creatures);
+  return isObject(value.crew);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

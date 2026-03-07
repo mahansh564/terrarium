@@ -1,5 +1,5 @@
-import type { CreatureState } from '@shared/types';
-import type { Creature } from '../entities/Creature';
+import type { CrewState } from '@shared/types';
+import type { CrewUnit } from '../entities/CrewUnit';
 
 interface LabelBundle {
   panel: Phaser.GameObjects.Graphics;
@@ -8,7 +8,7 @@ interface LabelBundle {
 }
 
 /**
- * Floating HUD layer for creature names and state icons.
+ * Floating HUD layer for crew names and state icons.
  */
 export class HUD {
   private readonly labels = new Map<string, LabelBundle>();
@@ -29,23 +29,23 @@ export class HUD {
     this.controlsPanel = scene.add.graphics();
     this.controlsPanel.setDepth(60);
 
-    this.controlsTitle = scene.add.text(0, 0, 'Control Deck', {
+    this.controlsTitle = scene.add.text(0, 0, 'Station Controls', {
       fontFamily: '"Trebuchet MS", "Lucida Sans Unicode", sans-serif',
       fontStyle: 'bold',
       fontSize: '13px',
-      color: '#f8feff'
+      color: '#eefcff'
     });
     this.controlsTitle.setDepth(61);
-    this.controlsTitle.setShadow(0, 1, '#082734', 2, false, true);
+    this.controlsTitle.setShadow(0, 1, '#041a2b', 2, false, true);
 
     this.controlsBody = scene.add.text(0, 0, '', {
       fontFamily: '"Trebuchet MS", "Lucida Sans Unicode", sans-serif',
       fontSize: '11px',
-      color: '#d8ffff',
+      color: '#caf6ff',
       lineSpacing: 2
     });
     this.controlsBody.setDepth(61);
-    this.controlsBody.setShadow(0, 1, '#082734', 2, false, true);
+    this.controlsBody.setShadow(0, 1, '#041a2b', 2, false, true);
 
     this.selectedPanel = scene.add.graphics();
     this.selectedPanel.setDepth(60);
@@ -57,20 +57,20 @@ export class HUD {
       color: '#fffef7'
     });
     this.selectedTitle.setDepth(61);
-    this.selectedTitle.setShadow(0, 1, '#3c2d06', 2, false, true);
+    this.selectedTitle.setShadow(0, 1, '#14202e', 2, false, true);
 
     this.selectedBody = scene.add.text(0, 0, '', {
       fontFamily: '"Trebuchet MS", "Lucida Sans Unicode", sans-serif',
       fontSize: '11px',
-      color: '#fff6d7',
+      color: '#e9f5ff',
       lineSpacing: 2
     });
     this.selectedBody.setDepth(61);
-    this.selectedBody.setShadow(0, 1, '#3c2d06', 2, false, true);
+    this.selectedBody.setShadow(0, 1, '#14202e', 2, false, true);
   }
 
   /**
-   * Updates currently selected creature id for HUD highlighting.
+   * Updates currently selected crew id for HUD highlighting.
    *
    * @param agentId Selected agent id, or null.
    */
@@ -79,12 +79,12 @@ export class HUD {
   }
 
   /**
-   * Synchronizes label objects with active creature set.
+   * Synchronizes label objects with active crew set.
    *
-   * @param creatures Active creature map by agent id.
+   * @param crewUnits Active crew map by agent id.
    */
-  syncCreatures(creatures: Map<string, Creature>): void {
-    for (const [agentId, creature] of creatures) {
+  syncCrewUnits(crewUnits: Map<string, CrewUnit>): void {
+    for (const [agentId, crew] of crewUnits) {
       if (this.labels.has(agentId)) {
         continue;
       }
@@ -92,7 +92,7 @@ export class HUD {
       const panel = this.scene.add.graphics();
       panel.setDepth(40);
 
-      const name = this.scene.add.text(0, 0, creature.getAgent().name, {
+      const name = this.scene.add.text(0, 0, crew.getAgent().name, {
         fontFamily: '"Trebuchet MS", "Lucida Sans Unicode", sans-serif',
         fontStyle: 'bold',
         fontSize: '12px',
@@ -115,7 +115,7 @@ export class HUD {
     }
 
     for (const [agentId, bundle] of this.labels) {
-      if (creatures.has(agentId)) {
+      if (crewUnits.has(agentId)) {
         continue;
       }
 
@@ -125,7 +125,7 @@ export class HUD {
       this.labels.delete(agentId);
     }
 
-    if (this.selectedAgentId !== null && !creatures.has(this.selectedAgentId)) {
+    if (this.selectedAgentId !== null && !crewUnits.has(this.selectedAgentId)) {
       this.selectedAgentId = null;
     }
   }
@@ -133,24 +133,25 @@ export class HUD {
   /**
    * Updates label positions and state icon content.
    *
-   * @param creatures Active creature map by agent id.
+   * @param crewUnits Active crew map by agent id.
    */
-  update(creatures: Map<string, Creature>): void {
+  update(crewUnits: Map<string, CrewUnit>): void {
     this.updateControlsPanel();
-    this.updateSelectedPanel(creatures);
+    this.updateSelectedPanel(crewUnits);
 
-    for (const [agentId, creature] of creatures) {
+    for (const [agentId, crew] of crewUnits) {
       const bundle = this.labels.get(agentId);
       if (bundle === undefined) {
         continue;
       }
 
-      const snapshot = creature.getSnapshot();
+      const snapshot = crew.getSnapshot();
       const state = snapshot.state;
-      const { x, y } = creature.getPosition();
-      const nameText = creature.getAgent().name;
-      const detailText = `${stateIcon(state)}  Lv ${snapshot.level}`;
-      const labelWidth = Math.max(82, this.measureLabelWidth(nameText, detailText));
+      const { x, y } = crew.getPosition();
+      const nameText = crew.getAgent().name;
+      const requestMarker = snapshot.requestingInput ? ' INPUT?' : '';
+      const detailText = `${stateIcon(state)} Lv ${snapshot.level}${requestMarker}`;
+      const labelWidth = Math.max(106, this.measureLabelWidth(nameText, detailText));
       const panelX = x - labelWidth / 2;
       const panelY = y - 66;
 
@@ -164,10 +165,10 @@ export class HUD {
 
       bundle.panel.clear();
       if (isSelected) {
-        bundle.panel.fillStyle(0x2a679e, 0.94);
-        bundle.panel.lineStyle(2, 0xfbff94, 1);
+        bundle.panel.fillStyle(0x1d5f8e, 0.94);
+        bundle.panel.lineStyle(2, 0xa6ffff, 1);
       } else {
-        bundle.panel.fillStyle(0x163546, 0.86);
+        bundle.panel.fillStyle(0x132f43, 0.86);
         bundle.panel.lineStyle(1, stateColor, 0.95);
       }
       bundle.panel.fillRoundedRect(panelX, panelY, labelWidth, 40, 8);
@@ -203,44 +204,44 @@ export class HUD {
     const height = 66;
 
     this.controlsPanel.clear();
-    this.controlsPanel.fillStyle(0x22577c, 0.92);
-    this.controlsPanel.lineStyle(2, 0x7ef8ff, 0.94);
+    this.controlsPanel.fillStyle(0x1a4f73, 0.92);
+    this.controlsPanel.lineStyle(2, 0x78f2ff, 0.94);
     this.controlsPanel.fillRoundedRect(x, y, width, height, 10);
     this.controlsPanel.strokeRoundedRect(x, y, width, height, 10);
     this.controlsPanel.fillStyle(0xffffff, 0.08);
     this.controlsPanel.fillRoundedRect(x + 1, y + 1, width - 2, 14, 10);
 
-    this.controlsTitle.setText('Control Deck');
+    this.controlsTitle.setText('Station Controls');
     this.controlsTitle.setPosition(x + 10, y + 7);
     this.controlsBody.setText('Select: Tab / Shift+Tab / 1..9\nMove: Arrow keys or WASD   Clear: Esc');
     this.controlsBody.setPosition(x + 10, y + 27);
   }
 
-  private updateSelectedPanel(creatures: Map<string, Creature>): void {
-    const width = 270;
+  private updateSelectedPanel(crewUnits: Map<string, CrewUnit>): void {
+    const width = 290;
     const x = this.scene.scale.width - width - 12;
     const y = 12;
-    const selectedCreature =
-      this.selectedAgentId === null ? undefined : creatures.get(this.selectedAgentId);
+    const selectedCrew = this.selectedAgentId === null ? undefined : crewUnits.get(this.selectedAgentId);
 
     this.selectedPanel.clear();
-    this.selectedPanel.fillStyle(0x805823, 0.94);
-    this.selectedPanel.lineStyle(2, 0xfff7a4, 0.95);
-    this.selectedPanel.fillRoundedRect(x, y, width, 66, 10);
-    this.selectedPanel.strokeRoundedRect(x, y, width, 66, 10);
+    this.selectedPanel.fillStyle(0x22394f, 0.94);
+    this.selectedPanel.lineStyle(2, 0xa8f7ff, 0.95);
+    this.selectedPanel.fillRoundedRect(x, y, width, 74, 10);
+    this.selectedPanel.strokeRoundedRect(x, y, width, 74, 10);
     this.selectedPanel.fillStyle(0xffffff, 0.08);
     this.selectedPanel.fillRoundedRect(x + 1, y + 1, width - 2, 14, 10);
 
-    if (selectedCreature === undefined) {
-      this.selectedTitle.setText('No Creature Selected');
+    if (selectedCrew === undefined) {
+      this.selectedTitle.setText('No Crew Selected');
       this.selectedBody.setText('Click one or press Tab to start controlling');
     } else {
-      const snapshot = selectedCreature.getSnapshot();
+      const snapshot = selectedCrew.getSnapshot();
       const moodLabel = snapshot.mood >= 0 ? `+${snapshot.mood}` : `${snapshot.mood}`;
+      const requestLine = snapshot.requestingInput ? '\nREQUESTING INPUT' : '';
 
-      this.selectedTitle.setText(`${selectedCreature.getAgent().name} [Selected]`);
+      this.selectedTitle.setText(`${selectedCrew.getAgent().name} [Selected]`);
       this.selectedBody.setText(
-        `State: ${snapshot.state}  Level: ${snapshot.level}\nXP: ${snapshot.xp}  Mood: ${moodLabel}`
+        `State: ${snapshot.state}  Level: ${snapshot.level}\nXP: ${snapshot.xp}  Mood: ${moodLabel}${requestLine}`
       );
     }
 
@@ -255,41 +256,45 @@ export class HUD {
   }
 }
 
-function stateIcon(state: CreatureState): string {
+function stateIcon(state: CrewState): string {
   switch (state) {
-    case 'working':
-      return '[W]';
-    case 'foraging':
-      return '[R]';
-    case 'resting':
-      return '[Z]';
+    case 'repairing':
+      return '[RPR]';
+    case 'scanning':
+      return '[SCN]';
+    case 'docked':
+      return '[DCK]';
     case 'alert':
-      return '[!]';
+      return '[ALR]';
     case 'celebrating':
-      return '[+]';
-    case 'distressed':
-      return '[-]';
-    case 'idle':
+      return '[OK]';
+    case 'damaged':
+      return '[DMG]';
+    case 'requesting_input':
+      return '[ASK]';
+    case 'standby':
     default:
-      return '[o]';
+      return '[STB]';
   }
 }
 
-function stateAccentColor(state: CreatureState): number {
+function stateAccentColor(state: CrewState): number {
   switch (state) {
-    case 'working':
+    case 'repairing':
       return 0x53ff9f;
-    case 'foraging':
+    case 'scanning':
       return 0x6de6ff;
-    case 'resting':
-      return 0x8e8eff;
+    case 'docked':
+      return 0x90a3c6;
     case 'alert':
       return 0xffdb4d;
     case 'celebrating':
-      return 0xffb84d;
-    case 'distressed':
+      return 0x9affc5;
+    case 'damaged':
       return 0xff7f87;
-    case 'idle':
+    case 'requesting_input':
+      return 0xb4f8ff;
+    case 'standby':
     default:
       return 0x95b7cd;
   }

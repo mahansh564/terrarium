@@ -3,24 +3,26 @@ import {
   applyActionToSnapshot,
   deriveStateFromAction,
   levelFromXp,
-  type CreatureSnapshot
-} from '../src/webview/entities/Creature';
+  type CrewSnapshot
+} from '../src/webview/entities/CrewUnit';
 
-describe('Creature state machine', () => {
+describe('CrewUnit state machine', () => {
   it('maps actions to expected states', () => {
-    expect(deriveStateFromAction('read')).toBe('foraging');
-    expect(deriveStateFromAction('write')).toBe('working');
-    expect(deriveStateFromAction('test_fail')).toBe('distressed');
+    expect(deriveStateFromAction('read')).toBe('scanning');
+    expect(deriveStateFromAction('write')).toBe('repairing');
+    expect(deriveStateFromAction('test_fail')).toBe('damaged');
     expect(deriveStateFromAction('complete')).toBe('celebrating');
+    expect(deriveStateFromAction('input_request')).toBe('requesting_input');
   });
 
   it('updates xp mood and level for positive actions', () => {
     const initial = {
-      state: 'idle' as const,
+      state: 'standby' as const,
       xp: 48,
       level: 1,
       mood: 0,
-      updatedAt: 0
+      updatedAt: 0,
+      requestingInput: false
     };
 
     const next = applyActionToSnapshot(initial, 'test_pass', 1000);
@@ -33,12 +35,13 @@ describe('Creature state machine', () => {
   });
 
   it('clamps mood to lower bound for repeated failures', () => {
-    let snapshot: CreatureSnapshot = {
-      state: 'idle' as const,
+    let snapshot: CrewSnapshot = {
+      state: 'standby' as const,
       xp: 0,
       level: 1,
       mood: 0,
-      updatedAt: 0
+      updatedAt: 0,
+      requestingInput: false
     };
 
     for (let i = 0; i < 30; i += 1) {
@@ -46,7 +49,7 @@ describe('Creature state machine', () => {
     }
 
     expect(snapshot.mood).toBeGreaterThanOrEqual(-100);
-    expect(snapshot.state).toBe('distressed');
+    expect(snapshot.state).toBe('damaged');
   });
 
   it('computes levels from thresholds', () => {

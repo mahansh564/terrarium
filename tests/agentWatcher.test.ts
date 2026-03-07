@@ -15,7 +15,7 @@ afterEach(() => {
 
 describe('AgentWatcherManager', () => {
   it('streams appended JSONL lines', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'codeterrarium-'));
+    const dir = await mkdtemp(join(tmpdir(), 'codeorbit-'));
     const transcript = join(dir, 'agent.jsonl');
     await writeFile(transcript, '', 'utf8');
 
@@ -32,7 +32,7 @@ describe('AgentWatcherManager', () => {
         id: 'codex',
         name: 'Codex',
         transcriptPath: transcript,
-        creatureType: 'fox'
+        crewRole: 'engineer'
       }
     ]);
 

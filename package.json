@@ -1,13 +1,13 @@
 {
-  "name": "codeterrarium",
-  "displayName": "CodeTerrarium",
-  "description": "A living pixel-art terrarium for AI coding agents inside VS Code.",
-  "version": "0.1.0",
+  "name": "codeorbit",
+  "displayName": "CodeOrbit",
+  "description": "A living pixel-art station for AI coding agents inside VS Code.",
+  "version": "0.2.0",
   "publisher": "anshulmahajan",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anshulmahajan/codeterrarium.git"
+    "url": "https://github.com/anshulmahajan/codeorbit.git"
   },
   "engines": {
     "vscode": "^1.96.0"
@@ -17,42 +17,42 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:codeterrarium.open",
-    "onCommand:codeterrarium.addAgent",
-    "onCommand:codeterrarium.resetEcosystem"
+    "onCommand:codeorbit.open",
+    "onCommand:codeorbit.addAgent",
+    "onCommand:codeorbit.resetEcosystem"
   ],
   "main": "./dist/extension/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "codeterrarium.open",
-        "title": "CodeTerrarium: Open Terrarium"
+        "command": "codeorbit.open",
+        "title": "CodeOrbit: Open Station"
       },
       {
-        "command": "codeterrarium.addAgent",
-        "title": "CodeTerrarium: Add Agent"
+        "command": "codeorbit.addAgent",
+        "title": "CodeOrbit: Add Agent"
       },
       {
-        "command": "codeterrarium.resetEcosystem",
-        "title": "CodeTerrarium: Reset Ecosystem"
+        "command": "codeorbit.resetEcosystem",
+        "title": "CodeOrbit: Reset Ecosystem"
       }
     ],
     "configuration": {
-      "title": "CodeTerrarium",
+      "title": "CodeOrbit",
       "properties": {
-        "codeterrarium.maxFps": {
+        "codeorbit.maxFps": {
           "type": "number",
           "default": 30,
           "minimum": 1,
           "maximum": 30,
-          "description": "Maximum render FPS for the terrarium webview."
+          "description": "Maximum render FPS for the station webview."
         },
-        "codeterrarium.weatherEnabled": {
+        "codeorbit.stationEffectsEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable or disable weather effects in the terrarium."
+          "description": "Enable or disable station environment effects."
         },
-        "codeterrarium.agents": {
+        "codeorbit.agents": {
           "type": "array",
           "description": "Configured transcript sources for observed coding agents.",
           "default": [],
@@ -62,7 +62,7 @@
               "id",
               "name",
               "transcriptPath",
-              "creatureType"
+              "crewRole"
             ],
             "additionalProperties": false,
             "properties": {
@@ -82,19 +82,19 @@
                 "type": "string",
                 "description": "Absolute path to transcript file or directory."
               },
-              "creatureType": {
+              "crewRole": {
                 "type": "string",
                 "enum": [
-                  "fox",
-                  "otter",
-                  "slime",
-                  "bird"
+                  "engineer",
+                  "pilot",
+                  "analyst",
+                  "security"
                 ],
-                "description": "Creature archetype used in the terrarium."
+                "description": "Crew role used in the station."
               },
               "color": {
                 "type": "string",
-                "description": "Optional hex color override for creature tint."
+                "description": "Optional hex color override for crew tint."
               }
             }
           }

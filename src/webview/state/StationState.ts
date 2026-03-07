@@ -1,6 +1,6 @@
 import {
-  DEFAULT_TERRARIUM_CONFIG,
-  DEFAULT_PERSISTED_CREATURE_STATE,
+  DEFAULT_PERSISTED_CREW_STATE,
+  DEFAULT_STATION_CONFIG,
   PERSIST_DEBOUNCE_MS,
   PERSISTED_SCHEMA_VERSION
 } from '@shared/constants';
@@ -9,9 +9,9 @@ import type {
   AgentEvent,
   ExtensionToWebviewMessage,
   HealthSignal,
-  PersistedCreatureState,
+  PersistedCrewState,
   PersistedStatsFile,
-  TerrariumConfig,
+  StationConfig,
   WebviewToExtensionMessage
 } from '@shared/types';
 
@@ -23,22 +23,22 @@ export type PostToExtension = (message: WebviewToExtensionMessage) => void;
 /**
  * Listener callback for state changes.
  */
-export type TerrariumStateListener = () => void;
+export type StationStateListener = () => void;
 
 /**
  * Central in-memory state store for the webview runtime.
  */
-export class TerrariumState {
-  private config: TerrariumConfig = { ...DEFAULT_TERRARIUM_CONFIG };
+export class StationState {
+  private config: StationConfig = { ...DEFAULT_STATION_CONFIG };
 
   private persisted: PersistedStatsFile = {
     version: PERSISTED_SCHEMA_VERSION,
-    creatures: {}
+    crew: {}
   };
 
   private readonly eventQueue: AgentEvent[] = [];
   private readonly healthQueue: HealthSignal[] = [];
-  private readonly listeners = new Set<TerrariumStateListener>();
+  private readonly listeners = new Set<StationStateListener>();
   private persistDebounceHandle: number | null = null;
 
   /**
@@ -54,7 +54,7 @@ export class TerrariumState {
    * @param listener State-change listener.
    * @returns Unsubscribe function.
    */
-  subscribe(listener: TerrariumStateListener): () => void {
+  subscribe(listener: StationStateListener): () => void {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -98,7 +98,7 @@ export class TerrariumState {
       case 'reset':
         this.persisted = {
           version: PERSISTED_SCHEMA_VERSION,
-          creatures: {}
+          crew: {}
         };
         this.eventQueue.length = 0;
         this.healthQueue.length = 0;
@@ -111,36 +111,36 @@ export class TerrariumState {
   }
 
   /**
-   * Returns current terrarium config snapshot.
+   * Returns current station config snapshot.
    *
    * @returns Current config object.
    */
-  getConfig(): TerrariumConfig {
+  getConfig(): StationConfig {
     return this.config;
   }
 
   /**
-   * Returns persisted creature state by agent id.
+   * Returns persisted crew state by agent id.
    *
    * @param agentId Agent identifier.
    * @returns Persisted stats for this agent.
    */
-  getCreatureState(agentId: string): PersistedCreatureState {
-    return this.persisted.creatures[agentId] ?? {
-      ...DEFAULT_PERSISTED_CREATURE_STATE,
+  getCrewState(agentId: string): PersistedCrewState {
+    return this.persisted.crew[agentId] ?? {
+      ...DEFAULT_PERSISTED_CREW_STATE,
       updatedAt: Date.now()
     };
   }
 
   /**
-   * Returns all persisted creature states.
+   * Returns all persisted crew states.
    *
    * @returns Clone of persisted state map.
    */
   getPersistedSnapshot(): PersistedStatsFile {
     return {
       version: PERSISTED_SCHEMA_VERSION,
-      creatures: { ...this.persisted.creatures }
+      crew: { ...this.persisted.crew }
     };
   }
 
@@ -150,8 +150,7 @@ export class TerrariumState {
    * @returns Events accumulated since last drain.
    */
   drainAgentEvents(): AgentEvent[] {
-    const events = this.eventQueue.splice(0, this.eventQueue.length);
-    return events;
+    return this.eventQueue.splice(0, this.eventQueue.length);
   }
 
   /**
@@ -160,18 +159,17 @@ export class TerrariumState {
    * @returns Health signals accumulated since last drain.
    */
   drainHealthSignals(): HealthSignal[] {
-    const signals = this.healthQueue.splice(0, this.healthQueue.length);
-    return signals;
+    return this.healthQueue.splice(0, this.healthQueue.length);
   }
 
   /**
-   * Stores latest creature stats and debounces persistence message.
+   * Stores latest crew stats and debounces persistence message.
    *
    * @param agentId Agent identifier.
-   * @param nextState Latest creature state snapshot.
+   * @param nextState Latest crew state snapshot.
    */
-  updateCreatureState(agentId: string, nextState: PersistedCreatureState): void {
-    this.persisted.creatures[agentId] = nextState;
+  updateCrewState(agentId: string, nextState: PersistedCrewState): void {
+    this.persisted.crew[agentId] = nextState;
     this.schedulePersist();
   }
 
@@ -182,12 +180,12 @@ export class TerrariumState {
   }
 
   private ensureStateForAgent(agentId: string): void {
-    if (this.persisted.creatures[agentId] !== undefined) {
+    if (this.persisted.crew[agentId] !== undefined) {
       return;
     }
 
-    this.persisted.creatures[agentId] = {
-      ...DEFAULT_PERSISTED_CREATURE_STATE,
+    this.persisted.crew[agentId] = {
+      ...DEFAULT_PERSISTED_CREW_STATE,
       updatedAt: Date.now()
     };
   }
@@ -216,6 +214,6 @@ export class TerrariumState {
 function sanitizePersisted(value: PersistedStatsFile): PersistedStatsFile {
   return {
     version: PERSISTED_SCHEMA_VERSION,
-    creatures: { ...value.creatures }
+    crew: { ...value.crew }
   };
 }

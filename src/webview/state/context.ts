@@ -1,30 +1,30 @@
 import type { WebviewToExtensionMessage } from '@shared/types';
-import { TerrariumState } from './TerrariumState';
+import { StationState } from './StationState';
 
-let terrariumState: TerrariumState | null = null;
+let stationState: StationState | null = null;
 
 /**
- * Initializes singleton terrarium state for the active webview runtime.
+ * Initializes singleton station state for the active webview runtime.
  *
  * @param postMessage Message callback used to notify extension host.
  * @returns Initialized state instance.
  */
-export function initializeTerrariumState(
+export function initializeStationState(
   postMessage: (message: WebviewToExtensionMessage) => void
-): TerrariumState {
-  terrariumState = new TerrariumState(postMessage);
-  return terrariumState;
+): StationState {
+  stationState = new StationState(postMessage);
+  return stationState;
 }
 
 /**
- * Returns current singleton terrarium state instance.
+ * Returns current singleton station state instance.
  *
- * @returns Initialized terrarium state.
+ * @returns Initialized station state.
  */
-export function getTerrariumState(): TerrariumState {
-  if (terrariumState === null) {
-    throw new Error('Terrarium state not initialized.');
+export function getStationState(): StationState {
+  if (stationState === null) {
+    throw new Error('Station state not initialized.');
   }
 
-  return terrariumState;
+  return stationState;
 }

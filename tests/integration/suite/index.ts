@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../../../src/shared/types';
 
-const EXTENSION_ID = 'anshulmahajan.codeterrarium';
+const EXTENSION_ID = 'anshulmahajan.codeorbit';
 const WAIT_TIMEOUT_MS = 8_000;
 const POLL_INTERVAL_MS = 50;
 
-interface CodeTerrariumTestExports {
+interface CodeOrbitTestExports {
   __dispatchWebviewMessageForTest: (message: WebviewToExtensionMessage) => Promise<void>;
   __setWebviewMessageProbeForTest: (
     probe: ((message: ExtensionToWebviewMessage) => void) | null
@@ -36,11 +36,11 @@ export async function run(): Promise<void> {
       exports.__deactivateForTest();
       await waitFor(
         () => exports.__isPanelOpenForTest() === false,
-        'Terrarium panel should close when extension deactivates.'
+        'Station panel should close when extension deactivates.'
       );
     }
   } catch (error: unknown) {
-    console.error('CodeTerrarium integration suite failed.', error);
+    console.error('CodeOrbit integration suite failed.', error);
     throw error;
   }
 }
@@ -55,10 +55,10 @@ async function activateExtension(): Promise<vscode.Extension<unknown>> {
     'Extension should activate lazily (inactive before command execution).'
   );
 
-  await vscode.commands.executeCommand('codeterrarium.open');
+  await vscode.commands.executeCommand('codeorbit.open');
   await waitFor(
     () => extension.isActive,
-    'Extension did not activate after executing codeterrarium.open.'
+    'Extension did not activate after executing codeorbit.open.'
   );
 
   return extension;
@@ -66,22 +66,22 @@ async function activateExtension(): Promise<vscode.Extension<unknown>> {
 
 async function testLifecycle(
   extension: vscode.Extension<unknown>,
-  exports: CodeTerrariumTestExports
+  exports: CodeOrbitTestExports
 ): Promise<void> {
   const commands = await vscode.commands.getCommands(true);
-  assert.ok(commands.includes('codeterrarium.open'), 'Expected open command to be registered.');
-  assert.ok(commands.includes('codeterrarium.addAgent'), 'Expected addAgent command to be registered.');
+  assert.ok(commands.includes('codeorbit.open'), 'Expected open command to be registered.');
+  assert.ok(commands.includes('codeorbit.addAgent'), 'Expected addAgent command to be registered.');
   assert.ok(
-    commands.includes('codeterrarium.resetEcosystem'),
+    commands.includes('codeorbit.resetEcosystem'),
     'Expected resetEcosystem command to be registered.'
   );
 
   assert.equal(extension.isActive, true, 'Extension should stay active after initial command.');
-  assert.equal(exports.__isPanelOpenForTest(), true, 'Terrarium panel should be open after command.');
+  assert.equal(exports.__isPanelOpenForTest(), true, 'Station panel should be open after command.');
 }
 
 async function testWebviewMessaging(
-  exports: CodeTerrariumTestExports,
+  exports: CodeOrbitTestExports,
   observedMessages: ExtensionToWebviewMessage[]
 ): Promise<void> {
   const beforeReady = observedMessages.length;
@@ -97,7 +97,7 @@ async function testWebviewMessaging(
 
   assert.equal(
     initMessage.payload.persisted.version,
-    1,
+    2,
     'Persisted payload should include supported schema version.'
   );
   assert.equal(
@@ -106,13 +106,13 @@ async function testWebviewMessaging(
     'Init config should include maxFps.'
   );
   assert.equal(
-    typeof initMessage.payload.config.weatherEnabled,
+    typeof initMessage.payload.config.stationEffectsEnabled,
     'boolean',
-    'Init config should include weatherEnabled.'
+    'Init config should include stationEffectsEnabled.'
   );
 
   const beforeReset = observedMessages.length;
-  await vscode.commands.executeCommand('codeterrarium.resetEcosystem');
+  await vscode.commands.executeCommand('codeorbit.resetEcosystem');
 
   await waitFor(
     () =>
@@ -134,8 +134,8 @@ async function testWebviewMessaging(
 
   assert.deepEqual(
     stateSync.payload,
-    { version: 1, creatures: {} },
-    'Reset should sync empty persisted creature state.'
+    { version: 2, crew: {} },
+    'Reset should sync empty persisted crew state.'
   );
 }
 
@@ -183,10 +183,10 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function asTestExports(value: unknown): CodeTerrariumTestExports {
+function asTestExports(value: unknown): CodeOrbitTestExports {
   assert.ok(isObject(value), 'Expected extension exports to be an object.');
 
-  const exports = value as Partial<CodeTerrariumTestExports>;
+  const exports = value as Partial<CodeOrbitTestExports>;
   assert.equal(
     typeof exports.__dispatchWebviewMessageForTest,
     'function',
@@ -200,7 +200,7 @@ function asTestExports(value: unknown): CodeTerrariumTestExports {
   assert.equal(typeof exports.__isPanelOpenForTest, 'function', 'Missing __isPanelOpenForTest export.');
   assert.equal(typeof exports.__deactivateForTest, 'function', 'Missing __deactivateForTest export.');
 
-  return exports as CodeTerrariumTestExports;
+  return exports as CodeOrbitTestExports;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

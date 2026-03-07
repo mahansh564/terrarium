@@ -29,13 +29,13 @@ describe('bridge type guards', () => {
       isWebviewToExtensionMessage({
         type: 'persist_state',
         payload: {
-          version: 1,
-          creatures: {
+          version: 2,
+          crew: {
             codex: {
               xp: 1,
               level: 1,
               mood: 0,
-              lastState: 'idle',
+              lastState: 'standby',
               updatedAt: Date.now()
             }
           }

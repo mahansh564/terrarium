@@ -64,7 +64,7 @@ export class AgentSourceAdapterRegistry {
 
     onError?.(
       new Error(
-        `CodeTerrarium source adapter "${requestedId}" is not registered for agent "${agent.id}". Falling back to "${JSONL_SOURCE_ADAPTER_ID}".`
+        `CodeOrbit source adapter "${requestedId}" is not registered for agent "${agent.id}". Falling back to "${JSONL_SOURCE_ADAPTER_ID}".`
       )
     );
 

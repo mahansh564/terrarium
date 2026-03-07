@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
 import {
   clampMaxFps,
-  DEFAULT_TERRARIUM_CONFIG,
+  DEFAULT_STATION_CONFIG,
   PERSISTED_SCHEMA_VERSION
 } from '@shared/constants';
 import type {
@@ -11,14 +11,14 @@ import type {
   ExtensionToWebviewMessage,
   HealthSignal,
   PersistedStatsFile,
-  TerrariumConfig,
+  StationConfig,
   WebviewToExtensionMessage
 } from '@shared/types';
 import { AgentWatcherManager } from './agentWatcher';
 import { ExtensionWebviewBridge } from './bridge';
 import { WorkspaceStatsStore } from './persistence';
 
-const PANEL_VIEW_TYPE = 'codeterrarium.panel';
+const PANEL_VIEW_TYPE = 'codeorbit.panel';
 
 let activePanel: vscode.WebviewPanel | null = null;
 type WebviewMessageProbe = (message: ExtensionToWebviewMessage) => void;
@@ -28,12 +28,12 @@ let testMessageDispatcher: ((message: WebviewToExtensionMessage) => Promise<void
 /**
  * Extension API returned from activation for integration testing.
  */
-export interface CodeTerrariumExtensionApi {
+export interface CodeOrbitExtensionApi {
   /** Registers a temporary observer for extension-to-webview messages. */
   __setWebviewMessageProbeForTest: (probe: WebviewMessageProbe | null) => void;
   /** Dispatches a webview message into the extension message handler. */
   __dispatchWebviewMessageForTest: (message: WebviewToExtensionMessage) => Promise<void>;
-  /** Indicates whether the terrarium panel is currently open. */
+  /** Indicates whether the station panel is currently open. */
   __isPanelOpenForTest: () => boolean;
   /** Invokes extension deactivation hook for lifecycle tests. */
   __deactivateForTest: () => void;
@@ -44,7 +44,7 @@ export interface CodeTerrariumExtensionApi {
  *
  * @param context VS Code extension activation context.
  */
-export async function activate(context: vscode.ExtensionContext): Promise<CodeTerrariumExtensionApi> {
+export async function activate(context: vscode.ExtensionContext): Promise<CodeOrbitExtensionApi> {
   const bridge = new ExtensionWebviewBridge();
   const statsStore = new WorkspaceStatsStore(context);
   let persistedState = await statsStore.load();
@@ -66,7 +66,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeTe
       }
     },
     (error) => {
-      void vscode.window.showWarningMessage(`CodeTerrarium watcher warning: ${error.message}`);
+      void vscode.window.showWarningMessage(`CodeOrbit watcher warning: ${error.message}`);
     }
   );
 
@@ -76,7 +76,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeTe
         await postIfPanelOpen(bridge, {
           type: 'init',
           payload: {
-            config: readTerrariumConfig(),
+            config: readStationConfig(),
             persisted: persistedState
           }
         });
@@ -88,7 +88,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeTe
         break;
       }
       case 'open_add_agent': {
-        await vscode.commands.executeCommand('codeterrarium.addAgent');
+        await vscode.commands.executeCommand('codeorbit.addAgent');
         break;
       }
       default:
@@ -103,11 +103,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeTe
       return activePanel;
     }
 
-    const panel = vscode.window.createWebviewPanel(PANEL_VIEW_TYPE, 'CodeTerrarium', vscode.ViewColumn.Beside, {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist')]
-    });
+    const panel = vscode.window.createWebviewPanel(
+      PANEL_VIEW_TYPE,
+      'CodeOrbit: Station',
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist')]
+      }
+    );
 
     panel.webview.html = createWebviewHtml(panel.webview, context.extensionUri);
     bridge.attachPanel(panel);
@@ -136,10 +141,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeTe
 
   context.subscriptions.push(
     watcher,
-    vscode.commands.registerCommand('codeterrarium.open', () => {
+    vscode.commands.registerCommand('codeorbit.open', () => {
       openPanel();
     }),
-    vscode.commands.registerCommand('codeterrarium.addAgent', async () => {
+    vscode.commands.registerCommand('codeorbit.addAgent', async () => {
       const addedAgent = await addAgentConfiguration();
       if (addedAgent === null) {
         return;
@@ -148,22 +153,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeTe
       reloadWatchers();
       await postIfPanelOpen(bridge, { type: 'agent_added', payload: addedAgent });
     }),
-    vscode.commands.registerCommand('codeterrarium.resetEcosystem', async () => {
+    vscode.commands.registerCommand('codeorbit.resetEcosystem', async () => {
       persistedState = {
         version: PERSISTED_SCHEMA_VERSION,
-        creatures: {}
+        crew: {}
       };
 
       await statsStore.reset();
       await postIfPanelOpen(bridge, { type: 'reset' });
       await postIfPanelOpen(bridge, { type: 'state_sync', payload: persistedState });
-      void vscode.window.showInformationMessage('CodeTerrarium ecosystem has been reset.');
+      void vscode.window.showInformationMessage('CodeOrbit station has been reset.');
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      const agentsChanged = event.affectsConfiguration('codeterrarium.agents');
+      const agentsChanged = event.affectsConfiguration('codeorbit.agents');
       const runtimeChanged =
-        event.affectsConfiguration('codeterrarium.maxFps') ||
-        event.affectsConfiguration('codeterrarium.weatherEnabled');
+        event.affectsConfiguration('codeorbit.maxFps') ||
+        event.affectsConfiguration('codeorbit.stationEffectsEnabled');
 
       if (!agentsChanged && !runtimeChanged) {
         return;
@@ -176,7 +181,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeTe
       void postIfPanelOpen(bridge, {
         type: 'init',
         payload: {
-          config: readTerrariumConfig(),
+          config: readStationConfig(),
           persisted: persistedState
         }
       });
@@ -238,7 +243,7 @@ export async function __dispatchWebviewMessageForTest(
 }
 
 /**
- * Indicates whether the terrarium panel is currently open.
+ * Indicates whether the station panel is currently open.
  *
  * @returns True when a panel is open.
  */
@@ -262,7 +267,7 @@ function createWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
-  <title>CodeTerrarium</title>
+  <title>CodeOrbit</title>
   <style>
     html, body, #app {
       margin: 0;
@@ -280,57 +285,59 @@ function createWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 </html>`;
 }
 
-function readTerrariumConfig(): TerrariumConfig {
-  const settings = vscode.workspace.getConfiguration('codeterrarium');
+function readStationConfig(): StationConfig {
+  const settings = vscode.workspace.getConfiguration('codeorbit');
 
   return {
-    maxFps: clampMaxFps(settings.get<number>('maxFps', DEFAULT_TERRARIUM_CONFIG.maxFps)),
+    maxFps: clampMaxFps(settings.get<number>('maxFps', DEFAULT_STATION_CONFIG.maxFps)),
     agents: readAgentConfigs(),
-    weatherEnabled: settings.get<boolean>('weatherEnabled', DEFAULT_TERRARIUM_CONFIG.weatherEnabled)
+    stationEffectsEnabled: settings.get<boolean>(
+      'stationEffectsEnabled',
+      DEFAULT_STATION_CONFIG.stationEffectsEnabled
+    )
   };
 }
 
 function readAgentConfigs(): AgentConfig[] {
-  const settings = vscode.workspace.getConfiguration('codeterrarium');
+  const settings = vscode.workspace.getConfiguration('codeorbit');
   const rawAgents = settings.get<unknown[]>('agents', []);
 
-  return rawAgents
-    .flatMap((entry): AgentConfig[] => {
-      if (typeof entry !== 'object' || entry === null) {
-        return [];
+  return rawAgents.flatMap((entry): AgentConfig[] => {
+    if (typeof entry !== 'object' || entry === null) {
+      return [];
+    }
+
+    const record = entry as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id : '';
+    const name = typeof record.name === 'string' ? record.name : id;
+    const sourceAdapter =
+      typeof record.sourceAdapter === 'string' && record.sourceAdapter.trim().length > 0
+        ? record.sourceAdapter.trim().toLowerCase()
+        : undefined;
+    const transcriptPath = typeof record.transcriptPath === 'string' ? record.transcriptPath : '';
+    const crewRole = normalizeCrewRole(record.crewRole);
+    const color = typeof record.color === 'string' ? record.color : undefined;
+
+    if (id.length === 0 || transcriptPath.length === 0 || crewRole === null) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        name,
+        ...(sourceAdapter !== undefined ? { sourceAdapter } : {}),
+        transcriptPath,
+        crewRole,
+        ...(color !== undefined ? { color } : {})
       }
-
-      const record = entry as Record<string, unknown>;
-      const id = typeof record.id === 'string' ? record.id : '';
-      const name = typeof record.name === 'string' ? record.name : id;
-      const sourceAdapter =
-        typeof record.sourceAdapter === 'string' && record.sourceAdapter.trim().length > 0
-          ? record.sourceAdapter.trim().toLowerCase()
-          : undefined;
-      const transcriptPath = typeof record.transcriptPath === 'string' ? record.transcriptPath : '';
-      const creatureType = normalizeCreatureType(record.creatureType);
-      const color = typeof record.color === 'string' ? record.color : undefined;
-
-      if (id.length === 0 || transcriptPath.length === 0 || creatureType === null) {
-        return [];
-      }
-
-      return [
-        {
-          id,
-          name,
-          ...(sourceAdapter !== undefined ? { sourceAdapter } : {}),
-          transcriptPath,
-          creatureType,
-          ...(color !== undefined ? { color } : {})
-        }
-      ];
-    });
+    ];
+  });
 }
 
 async function addAgentConfiguration(): Promise<AgentConfig | null> {
   const name = await vscode.window.showInputBox({
-    title: 'CodeTerrarium: Agent Name',
+    title: 'CodeOrbit: Agent Name',
     prompt: 'Enter a display name for the agent',
     ignoreFocusOut: true,
     validateInput: (value) => (value.trim().length > 0 ? undefined : 'Name is required.')
@@ -353,18 +360,21 @@ async function addAgentConfiguration(): Promise<AgentConfig | null> {
     return null;
   }
 
-  const pickedCreatureType = await vscode.window.showQuickPick(['fox', 'otter', 'slime', 'bird'], {
-    title: 'Choose Creature Type',
-    canPickMany: false,
-    ignoreFocusOut: true
-  });
+  const pickedCrewRole = await vscode.window.showQuickPick(
+    ['engineer', 'pilot', 'analyst', 'security'],
+    {
+      title: 'Choose Crew Role',
+      canPickMany: false,
+      ignoreFocusOut: true
+    }
+  );
 
-  if (pickedCreatureType === undefined) {
+  if (pickedCrewRole === undefined) {
     return null;
   }
 
-  const creatureType = normalizeCreatureType(pickedCreatureType);
-  if (creatureType === null) {
+  const crewRole = normalizeCrewRole(pickedCrewRole);
+  if (crewRole === null) {
     return null;
   }
 
@@ -373,10 +383,10 @@ async function addAgentConfiguration(): Promise<AgentConfig | null> {
     id: slugify(normalizedName),
     name: normalizedName,
     transcriptPath: pathUri.fsPath,
-    creatureType
+    crewRole
   };
 
-  const settings = vscode.workspace.getConfiguration('codeterrarium');
+  const settings = vscode.workspace.getConfiguration('codeorbit');
   const existingAgents = readAgentConfigs();
   const nextAgents = [...existingAgents.filter((agent) => agent.id !== newAgent.id), newAgent];
 
@@ -409,13 +419,18 @@ function toHealthSignal(action: AgentAction, agentId: string, ts: number): Healt
       return { type: 'milestone', source: action, agentId, ts };
     case 'test_run':
       return { type: 'neutral', source: action, agentId, ts };
+    case 'input_request':
+    case 'read':
+    case 'write':
+    case 'terminal':
+    case 'idle':
     default:
       return null;
   }
 }
 
-function normalizeCreatureType(value: unknown): AgentConfig['creatureType'] | null {
-  if (value === 'fox' || value === 'otter' || value === 'slime' || value === 'bird') {
+function normalizeCrewRole(value: unknown): AgentConfig['crewRole'] | null {
+  if (value === 'engineer' || value === 'pilot' || value === 'analyst' || value === 'security') {
     return value;
   }
 
