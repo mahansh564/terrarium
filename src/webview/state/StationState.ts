@@ -2,13 +2,17 @@ import {
   DEFAULT_PERSISTED_CREW_STATE,
   DEFAULT_STATION_CONFIG,
   PERSIST_DEBOUNCE_MS,
-  PERSISTED_SCHEMA_VERSION
+  PERSISTED_SCHEMA_VERSION,
+  STATION_QUEUE_MAX_ITEMS
 } from '@shared/constants';
 import type {
   AgentConfig,
   AgentEvent,
   ExtensionToWebviewMessage,
   HealthSignal,
+  MissionState,
+  PendingInputRequest,
+  ProjectMetricsSnapshot,
   PersistedCrewState,
   PersistedStatsFile,
   StationConfig,
@@ -38,6 +42,10 @@ export class StationState {
 
   private readonly eventQueue: AgentEvent[] = [];
   private readonly healthQueue: HealthSignal[] = [];
+  private readonly missionRewardQueue: MissionState[] = [];
+  private actionCenter: PendingInputRequest[] = [];
+  private missions: MissionState[] = [];
+  private projectMetrics: ProjectMetricsSnapshot = emptyProjectMetricsSnapshot();
   private readonly listeners = new Set<StationStateListener>();
   private persistDebounceHandle: number | null = null;
 
@@ -85,12 +93,35 @@ export class StationState {
         break;
       }
       case 'agent_event':
-        this.eventQueue.push(message.payload);
+        pushIntoQueue(this.eventQueue, message.payload);
         this.ensureStateForAgent(message.payload.agentId);
         break;
       case 'health_signal':
-        this.healthQueue.push(message.payload);
+        pushIntoQueue(this.healthQueue, message.payload);
         break;
+      case 'project_metrics':
+        this.projectMetrics = message.payload;
+        this.emit();
+        break;
+      case 'action_center_sync':
+        this.actionCenter = [...message.payload];
+        this.emit();
+        break;
+      case 'mission_sync': {
+        const previousById = new Map(this.missions.map((mission) => [mission.id, mission]));
+        this.missions = [...message.payload];
+        for (const mission of this.missions) {
+          const previous = previousById.get(mission.id);
+          const completedNow =
+            mission.completedAt !== undefined &&
+            (previous?.completedAt === undefined || mission.completedAt > previous.completedAt);
+          if (completedNow) {
+            pushIntoQueue(this.missionRewardQueue, mission);
+          }
+        }
+        this.emit();
+        break;
+      }
       case 'state_sync':
         this.persisted = sanitizePersisted(message.payload);
         this.emit();
@@ -102,6 +133,9 @@ export class StationState {
         };
         this.eventQueue.length = 0;
         this.healthQueue.length = 0;
+        this.missionRewardQueue.length = 0;
+        this.actionCenter = [];
+        this.missions = [];
         this.ensureAgentStates(this.config.agents);
         this.emit();
         break;
@@ -163,6 +197,42 @@ export class StationState {
   }
 
   /**
+   * Drains newly completed mission entries.
+   *
+   * @returns Mission completion records since last drain.
+   */
+  drainMissionRewards(): MissionState[] {
+    return this.missionRewardQueue.splice(0, this.missionRewardQueue.length);
+  }
+
+  /**
+   * Returns Action Center unresolved request entries.
+   *
+   * @returns Pending input-request entries.
+   */
+  getActionCenterSnapshot(): PendingInputRequest[] {
+    return [...this.actionCenter];
+  }
+
+  /**
+   * Returns synchronized mission states.
+   *
+   * @returns Mission state list.
+   */
+  getMissionSnapshot(): MissionState[] {
+    return [...this.missions];
+  }
+
+  /**
+   * Returns latest project metrics snapshot.
+   *
+   * @returns Project metrics snapshot.
+   */
+  getProjectMetricsSnapshot(): ProjectMetricsSnapshot {
+    return this.projectMetrics;
+  }
+
+  /**
    * Stores latest crew stats and debounces persistence message.
    *
    * @param agentId Agent identifier.
@@ -178,6 +248,22 @@ export class StationState {
    */
   requestAddAgent(): void {
     this.postToExtension({ type: 'open_add_agent' });
+  }
+
+  /**
+   * Requests runtime preference updates from the extension host.
+   *
+   * @param payload Preference patch payload.
+   */
+  updateRuntimePreferences(payload: {
+    stationEffectsEnabled?: boolean;
+    audioEnabled?: boolean;
+    simulationSpeed?: number;
+  }): void {
+    this.postToExtension({
+      type: 'update_runtime_preferences',
+      payload
+    });
   }
 
   private ensureAgentStates(agents: AgentConfig[]): void {
@@ -216,6 +302,25 @@ export class StationState {
       listener();
     }
   }
+}
+
+function emptyProjectMetricsSnapshot(): ProjectMetricsSnapshot {
+  return {
+    ts: Date.now(),
+    dirtyFileCount: null,
+    lastTestPassAt: null,
+    lastTestFailAt: null,
+    failureStreak: 0
+  };
+}
+
+function pushIntoQueue<T>(queue: T[], value: T): void {
+  queue.push(value);
+  if (queue.length <= STATION_QUEUE_MAX_ITEMS) {
+    return;
+  }
+
+  queue.splice(0, queue.length - STATION_QUEUE_MAX_ITEMS);
 }
 
 function sanitizePersisted(value: PersistedStatsFile): PersistedStatsFile {

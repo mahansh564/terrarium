@@ -33,6 +33,16 @@ export interface SvgAsset {
 }
 
 /**
+ * Static raster image asset descriptor for Phaser loaders.
+ */
+export interface ImageAsset {
+  /** Texture key registered in Phaser cache. */
+  key: string;
+  /** Resolved asset URL emitted by Vite. */
+  url: string;
+}
+
+/**
  * Static audio asset descriptor for Phaser loaders.
  */
 export interface AudioAsset {
@@ -55,19 +65,19 @@ export const TILE_TEXTURE_ASSETS: readonly SvgAsset[] = [
 /**
  * Crew frame textures used for idle and walk animations.
  */
-export const CREW_TEXTURE_ASSETS: readonly SvgAsset[] = [
-  { key: 'crew-engineer-idle', url: engineerIdleUrl, width: 32, height: 32 },
-  { key: 'crew-engineer-walk-a', url: engineerWalkAUrl, width: 32, height: 32 },
-  { key: 'crew-engineer-walk-b', url: engineerWalkBUrl, width: 32, height: 32 },
-  { key: 'crew-pilot-idle', url: pilotIdleUrl, width: 32, height: 32 },
-  { key: 'crew-pilot-walk-a', url: pilotWalkAUrl, width: 32, height: 32 },
-  { key: 'crew-pilot-walk-b', url: pilotWalkBUrl, width: 32, height: 32 },
-  { key: 'crew-analyst-idle', url: analystIdleUrl, width: 32, height: 32 },
-  { key: 'crew-analyst-walk-a', url: analystWalkAUrl, width: 32, height: 32 },
-  { key: 'crew-analyst-walk-b', url: analystWalkBUrl, width: 32, height: 32 },
-  { key: 'crew-security-idle', url: securityIdleUrl, width: 32, height: 32 },
-  { key: 'crew-security-walk-a', url: securityWalkAUrl, width: 32, height: 32 },
-  { key: 'crew-security-walk-b', url: securityWalkBUrl, width: 32, height: 32 }
+export const CREW_TEXTURE_ASSETS: readonly ImageAsset[] = [
+  { key: 'crew-engineer-idle', url: engineerIdleUrl },
+  { key: 'crew-engineer-walk-a', url: engineerWalkAUrl },
+  { key: 'crew-engineer-walk-b', url: engineerWalkBUrl },
+  { key: 'crew-pilot-idle', url: pilotIdleUrl },
+  { key: 'crew-pilot-walk-a', url: pilotWalkAUrl },
+  { key: 'crew-pilot-walk-b', url: pilotWalkBUrl },
+  { key: 'crew-analyst-idle', url: analystIdleUrl },
+  { key: 'crew-analyst-walk-a', url: analystWalkAUrl },
+  { key: 'crew-analyst-walk-b', url: analystWalkBUrl },
+  { key: 'crew-security-idle', url: securityIdleUrl },
+  { key: 'crew-security-walk-a', url: securityWalkAUrl },
+  { key: 'crew-security-walk-b', url: securityWalkBUrl }
 ];
 
 /**

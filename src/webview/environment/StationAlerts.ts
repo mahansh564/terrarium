@@ -1,4 +1,4 @@
-import type { HealthSignal } from '@shared/types';
+import type { HealthSignal, ProjectMetricsSnapshot } from '@shared/types';
 
 /**
  * Supported station alert render modes.
@@ -16,6 +16,7 @@ export class StationAlerts {
   private enabled = true;
   private mode: AlertMode = 'clear';
   private modeUntil = 0;
+  private metricsStress = 0;
 
   /**
    * Creates station alert graphics.
@@ -82,6 +83,21 @@ export class StationAlerts {
   }
 
   /**
+   * Applies local project metrics to ambient alert stress.
+   *
+   * @param metrics Latest project metrics snapshot.
+   */
+  applyMetrics(metrics: ProjectMetricsSnapshot): void {
+    const dirtyScore = metrics.dirtyFileCount === null ? 0 : Math.min(1, metrics.dirtyFileCount / 24);
+    const streakScore = Math.min(1, metrics.failureStreak / 4);
+    const failing = metrics.lastTestFailAt !== null && metrics.lastTestPassAt !== null
+      ? metrics.lastTestFailAt > metrics.lastTestPassAt
+      : metrics.lastTestFailAt !== null;
+    const failBias = failing ? 0.3 : 0;
+    this.metricsStress = Math.max(0, Math.min(1, dirtyScore * 0.5 + streakScore * 0.35 + failBias));
+  }
+
+  /**
    * Advances station alert rendering.
    *
    * @param now Current timestamp in milliseconds.
@@ -114,6 +130,12 @@ export class StationAlerts {
       case 'clear':
       default:
         break;
+    }
+
+    if (this.metricsStress > 0.08) {
+      const stressPulse = 0.02 + this.metricsStress * 0.12;
+      this.powerLayer.fillStyle(0xff9aa6, stressPulse);
+      this.powerLayer.fillRect(0, 0, 960, 540);
     }
   }
 

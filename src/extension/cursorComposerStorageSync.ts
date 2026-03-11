@@ -24,6 +24,8 @@ export interface CursorComposerRecord {
   createdAt?: number;
   /** Optional last update timestamp (epoch ms). */
   lastUpdatedAt?: number;
+  /** Whether Cursor indicates the composer is blocked pending user action. */
+  hasBlockingPendingActions?: boolean;
 }
 
 /**
@@ -352,6 +354,7 @@ export function extractActiveAgentComposers(rawComposerData: string): CursorComp
         isDraft?: unknown;
         createdAt?: unknown;
         lastUpdatedAt?: unknown;
+        hasBlockingPendingActions?: unknown;
       }>;
       selectedComposerIds?: unknown;
       lastFocusedComposerIds?: unknown;
@@ -382,13 +385,18 @@ export function extractActiveAgentComposers(rawComposerData: string): CursorComp
       const name = typeof composer.name === 'string' ? composer.name.trim() : '';
       const createdAt = toOptionalEpochMs(composer.createdAt);
       const lastUpdatedAt = toOptionalEpochMs(composer.lastUpdatedAt);
+      const hasBlockingPendingActions =
+        typeof composer.hasBlockingPendingActions === 'boolean'
+          ? composer.hasBlockingPendingActions
+          : undefined;
 
       records.set(composerId, {
         composerId,
         unifiedMode: 'agent',
         ...(name.length > 0 ? { name } : {}),
         ...(createdAt !== undefined ? { createdAt } : {}),
-        ...(lastUpdatedAt !== undefined ? { lastUpdatedAt } : {})
+        ...(lastUpdatedAt !== undefined ? { lastUpdatedAt } : {}),
+        ...(hasBlockingPendingActions !== undefined ? { hasBlockingPendingActions } : {})
       });
     }
   } catch {
@@ -529,7 +537,8 @@ function areComposerRecordsEquivalent(
     (left.name ?? '') === (right.name ?? '') &&
     (left.isArchived ?? false) === (right.isArchived ?? false) &&
     (left.createdAt ?? null) === (right.createdAt ?? null) &&
-    (left.lastUpdatedAt ?? null) === (right.lastUpdatedAt ?? null)
+    (left.lastUpdatedAt ?? null) === (right.lastUpdatedAt ?? null) &&
+    (left.hasBlockingPendingActions ?? false) === (right.hasBlockingPendingActions ?? false)
   );
 }
 

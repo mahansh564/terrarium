@@ -160,6 +160,17 @@ export type AgentEvent =
 export type CrewRole = 'engineer' | 'pilot' | 'analyst' | 'security';
 
 /**
+ * Station movement intent zones used by autonomous crew navigation.
+ */
+export type StationZone =
+  | 'console_bay'
+  | 'module_bay'
+  | 'dock'
+  | 'diagnostics'
+  | 'central_hub'
+  | 'patrol';
+
+/**
  * User-configured transcript source and crew role settings for an agent.
  */
 export interface AgentConfig {
@@ -187,6 +198,10 @@ export interface StationConfig {
   agents: AgentConfig[];
   /** Whether station environment effects should be enabled. */
   stationEffectsEnabled: boolean;
+  /** Whether ambient audio playback should be enabled. */
+  audioEnabled: boolean;
+  /** Simulation speed multiplier for non-manual movement/ambient systems. */
+  simulationSpeed: number;
 }
 
 /**
@@ -235,6 +250,68 @@ export interface HealthSignal {
 }
 
 /**
+ * Snapshot of local workspace project metrics used by station systems.
+ */
+export interface ProjectMetricsSnapshot {
+  /** Timestamp when the snapshot was produced. */
+  ts: number;
+  /** Number of dirty files from `git status --porcelain`, or null when unavailable. */
+  dirtyFileCount: number | null;
+  /** Timestamp of latest observed passing test event, or null. */
+  lastTestPassAt: number | null;
+  /** Timestamp of latest observed failing test event, or null. */
+  lastTestFailAt: number | null;
+  /** Consecutive failing-test streak derived from transcript events. */
+  failureStreak: number;
+}
+
+/**
+ * Pending input-request entry shown in the Action Center.
+ */
+export interface PendingInputRequest {
+  /** Agent that requested input. */
+  agentId: string;
+  /** Optional display name for the requesting agent. */
+  agentName?: string;
+  /** Latest request prompt. */
+  prompt: string;
+  /** Timestamp of the first unresolved request for this agent. */
+  requestedAt: number;
+  /** Timestamp of the latest unresolved request update for this agent. */
+  updatedAt: number;
+}
+
+/**
+ * Mission identifiers used by the station reward loop.
+ */
+export type MissionId = 'run_tests' | 'recover_from_failure' | 'complete_task';
+
+/**
+ * Mission lifecycle state.
+ */
+export type MissionStatus = 'idle' | 'active' | 'completed';
+
+/**
+ * Mission state synchronized to the webview.
+ */
+export interface MissionState {
+  /** Stable mission identifier. */
+  id: MissionId;
+  /** Human-friendly mission title. */
+  title: string;
+  /** Short mission description. */
+  description: string;
+  /** Current mission lifecycle state. */
+  status: MissionStatus;
+  /** Mission progress in range [0, 1]. */
+  progress: number;
+  /** XP reward granted when this mission completes. */
+  rewardXp: number;
+  /** Completion timestamp when mission is completed. */
+  completedAt?: number;
+}
+
+/**
  * Initialization message payload sent by extension host.
  */
 export interface InitMessagePayload {
@@ -270,6 +347,18 @@ export type ExtensionToWebviewMessage =
   | {
       type: 'health_signal';
       payload: HealthSignal;
+    }
+  | {
+      type: 'project_metrics';
+      payload: ProjectMetricsSnapshot;
+    }
+  | {
+      type: 'action_center_sync';
+      payload: PendingInputRequest[];
+    }
+  | {
+      type: 'mission_sync';
+      payload: MissionState[];
     };
 
 /**
@@ -285,4 +374,12 @@ export type WebviewToExtensionMessage =
     }
   | {
       type: 'open_add_agent';
+    }
+  | {
+      type: 'update_runtime_preferences';
+      payload: {
+        stationEffectsEnabled?: boolean;
+        audioEnabled?: boolean;
+        simulationSpeed?: number;
+      };
     };

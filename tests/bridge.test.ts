@@ -28,6 +28,15 @@ describe('bridge type guards', () => {
     expect(isWebviewToExtensionMessage({ type: 'open_add_agent' })).toBe(true);
     expect(
       isWebviewToExtensionMessage({
+        type: 'update_runtime_preferences',
+        payload: {
+          stationEffectsEnabled: false,
+          simulationSpeed: 1.25
+        }
+      })
+    ).toBe(true);
+    expect(
+      isWebviewToExtensionMessage({
         type: 'persist_state',
         payload: {
           version: 2,

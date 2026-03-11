@@ -19,7 +19,10 @@
   "activationEvents": [
     "onCommand:codeorbit.open",
     "onCommand:codeorbit.addAgent",
-    "onCommand:codeorbit.resetEcosystem"
+    "onCommand:codeorbit.resetEcosystem",
+    "onCommand:codeorbit.toggleStationEffects",
+    "onCommand:codeorbit.toggleAudio",
+    "onCommand:codeorbit.cycleSimulationSpeed"
   ],
   "main": "./dist/extension/extension.js",
   "contributes": {
@@ -35,6 +38,18 @@
       {
         "command": "codeorbit.resetEcosystem",
         "title": "CodeOrbit: Reset Ecosystem"
+      },
+      {
+        "command": "codeorbit.toggleStationEffects",
+        "title": "CodeOrbit: Toggle Station Effects"
+      },
+      {
+        "command": "codeorbit.toggleAudio",
+        "title": "CodeOrbit: Toggle Ambient Audio"
+      },
+      {
+        "command": "codeorbit.cycleSimulationSpeed",
+        "title": "CodeOrbit: Cycle Simulation Speed"
       }
     ],
     "configuration": {
@@ -51,6 +66,32 @@
           "type": "boolean",
           "default": true,
           "description": "Enable or disable station environment effects."
+        },
+        "codeorbit.audioEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable ambient station audio."
+        },
+        "codeorbit.simulationSpeed": {
+          "type": "number",
+          "default": 1,
+          "enum": [
+            0.75,
+            1,
+            1.25
+          ],
+          "description": "Simulation speed multiplier for ambient crew and station systems."
+        },
+        "codeorbit.localMetrics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable local workspace metrics to drive station health."
+        },
+        "codeorbit.localMetrics.pollMs": {
+          "type": "number",
+          "default": 20000,
+          "minimum": 5000,
+          "description": "Polling interval in milliseconds for local project metrics."
         },
         "codeorbit.agents": {
           "type": "array",

@@ -1,5 +1,5 @@
-import { STATION_DIMENSIONS } from '@shared/constants';
-import type { AgentConfig } from '@shared/types';
+import { MISSION_REWARD_XP, STATION_DIMENSIONS } from '@shared/constants';
+import type { AgentConfig, StationZone } from '@shared/types';
 import {
   STATION_AUDIO_ASSETS,
   STATION_BACKGROUND_TEXTURE_KEY,
@@ -22,8 +22,13 @@ import {
   selectAgentByIndex
 } from '../input/controls';
 import { getStationState } from '../state/context';
+import { ActionCenter } from '../ui/ActionCenter';
+import { CommandDeck } from '../ui/CommandDeck';
 import { HUD } from '../ui/HUD';
+import { MissionDeck } from '../ui/MissionDeck';
 import { Tooltip } from '../ui/Tooltip';
+import { resolveCrewMotionMode } from './crewMotion';
+import { zoneForCrewState, zoneTarget } from './zoneRouting';
 
 const CREW_MOVE_SPEED_PX_PER_SECOND = 118;
 const CREW_ROAM_SPEED_RANGE = {
@@ -52,6 +57,7 @@ const QUICK_SELECT_KEYCODES = [
   Phaser.Input.Keyboard.KeyCodes.NINE
 ] as const;
 const SPACE_GRADIENT_STEPS = 9;
+const ZONE_REACHED_DISTANCE_PX = 16;
 
 interface BackgroundStar {
   x: number;
@@ -65,6 +71,7 @@ interface CrewRoamState {
   vx: number;
   vy: number;
   nextTurnAt: number;
+  zone: StationZone;
 }
 
 /**
@@ -78,9 +85,13 @@ export class StationScene extends Phaser.Scene {
   private orbitalCycle!: OrbitalCycle;
   private hud!: HUD;
   private tooltip!: Tooltip;
+  private actionCenter!: ActionCenter;
+  private missionDeck!: MissionDeck;
+  private commandDeck!: CommandDeck;
   private ambientTrack: Phaser.Sound.BaseSound | null = null;
   private unsubscribe: (() => void) | null = null;
   private selectedAgentId: string | null = null;
+  private followSelectedAgent = false;
   private cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null;
   private movementKeys: {
     up: Phaser.Input.Keyboard.Key | null;
@@ -124,8 +135,40 @@ export class StationScene extends Phaser.Scene {
       state.requestAddAgent();
     });
     this.tooltip = new Tooltip(this);
+    this.actionCenter = new ActionCenter(this, (agentId) => {
+      this.setSelectedAgent(agentId);
+    });
+    this.missionDeck = new MissionDeck(this);
+    this.commandDeck = new CommandDeck(this, {
+      onToggleEffects: () => {
+        const config = state.getConfig();
+        state.updateRuntimePreferences({
+          stationEffectsEnabled: !config.stationEffectsEnabled
+        });
+      },
+      onToggleAudio: () => {
+        const config = state.getConfig();
+        state.updateRuntimePreferences({
+          audioEnabled: !config.audioEnabled
+        });
+      },
+      onCycleSpeed: () => {
+        const options = [0.75, 1, 1.25];
+        const current = state.getConfig().simulationSpeed;
+        const currentIndex = options.indexOf(current);
+        const next = options[(currentIndex + 1 + options.length) % options.length] ?? 1;
+        state.updateRuntimePreferences({ simulationSpeed: next });
+      },
+      onToggleFollow: () => {
+        this.followSelectedAgent = !this.followSelectedAgent;
+        if (!this.followSelectedAgent) {
+          this.cameras.main.stopFollow();
+        }
+      }
+    });
     this.stationAlerts.setEnabled(state.getConfig().stationEffectsEnabled);
     this.startAmbientTrack();
+    this.syncAmbientTrackState(state.getConfig().audioEnabled);
 
     this.syncCrewUnits(state.getConfig().agents);
     this.hud.syncCrewUnits(this.crewUnits);
@@ -135,7 +178,9 @@ export class StationScene extends Phaser.Scene {
     this.setupKeyboardControls();
 
     this.unsubscribe = state.subscribe(() => {
-      this.stationAlerts.setEnabled(state.getConfig().stationEffectsEnabled);
+      const config = state.getConfig();
+      this.stationAlerts.setEnabled(config.stationEffectsEnabled);
+      this.syncAmbientTrackState(config.audioEnabled);
       this.syncCrewUnits(state.getConfig().agents);
       this.hud.syncCrewUnits(this.crewUnits);
       this.hud.setSelectedAgent(this.selectedAgentId);
@@ -159,6 +204,9 @@ export class StationScene extends Phaser.Scene {
       this.viewportFrame?.destroy();
       this.hud.destroy();
       this.tooltip.destroy();
+      this.actionCenter.destroy();
+      this.missionDeck.destroy();
+      this.commandDeck.destroy();
     });
   }
 
@@ -170,9 +218,11 @@ export class StationScene extends Phaser.Scene {
    */
   update(time: number, delta: number): void {
     const state = getStationState();
+    const simulationSpeed = state.getConfig().simulationSpeed;
+    const scaledDelta = delta * simulationSpeed;
     this.handleKeyboardSelection();
-    this.handleSelectedCrewMovement(delta);
-    this.updateAmbientCrewMovement(time, delta);
+    const selectedManualMovement = this.handleSelectedCrewMovement(scaledDelta);
+    this.updateAmbientCrewMovement(time, scaledDelta, selectedManualMovement);
 
     const events = state.drainAgentEvents();
     for (const event of events) {
@@ -186,11 +236,27 @@ export class StationScene extends Phaser.Scene {
       }
     }
 
+    const missionRewards = state.drainMissionRewards();
+    for (const mission of missionRewards) {
+      this.applyMissionReward(mission.rewardXp, time);
+      this.missionDeck.triggerBoost(`${mission.title} +${mission.rewardXp}XP`, time);
+      this.stationAlerts.applySignal({
+        type: 'milestone',
+        source: 'complete',
+        agentId: this.selectedAgentId ?? 'mission',
+        ts: time
+      });
+    }
+
     const signals = state.drainHealthSignals();
     for (const signal of signals) {
       this.stationAlerts.applySignal(signal);
       this.stationInfrastructure.applySignal(signal);
     }
+
+    const projectMetrics = state.getProjectMetricsSnapshot();
+    this.stationAlerts.applyMetrics(projectMetrics);
+    this.stationInfrastructure.applyMetrics(projectMetrics);
 
     for (const [agentId, crew] of this.crewUnits) {
       if (crew.tick(time)) {
@@ -199,12 +265,24 @@ export class StationScene extends Phaser.Scene {
     }
 
     this.stationAlerts.update(time);
-    this.stationInfrastructure.update(delta);
+    this.stationInfrastructure.update(scaledDelta);
     this.orbitalCycle.update(time);
     this.updateBackdropEffects(time);
+    this.updateCameraFollow();
     this.hud.setSelectedAgent(this.selectedAgentId);
     this.hud.update(this.crewUnits);
     this.tooltip.update(this.crewUnits);
+    this.actionCenter.update(state.getActionCenterSnapshot(), time);
+    this.missionDeck.update(state.getMissionSnapshot(), time);
+    this.commandDeck.update(
+      {
+        stationEffectsEnabled: state.getConfig().stationEffectsEnabled,
+        audioEnabled: state.getConfig().audioEnabled,
+        simulationSpeed,
+        followSelectedAgent: this.followSelectedAgent
+      },
+      time
+    );
   }
 
   private syncCrewUnits(configuredAgents: AgentConfig[]): void {
@@ -476,6 +554,21 @@ export class StationScene extends Phaser.Scene {
     playTrack();
   }
 
+  private syncAmbientTrackState(enabled: boolean): void {
+    if (this.ambientTrack === null) {
+      return;
+    }
+
+    if (enabled && !this.ambientTrack.isPlaying) {
+      this.ambientTrack.play();
+      return;
+    }
+
+    if (!enabled && this.ambientTrack.isPlaying) {
+      this.ambientTrack.stop();
+    }
+  }
+
   private setupKeyboardControls(): void {
     const keyboard = this.input.keyboard;
     if (keyboard === undefined || keyboard === null) {
@@ -531,15 +624,15 @@ export class StationScene extends Phaser.Scene {
     }
   }
 
-  private handleSelectedCrewMovement(delta: number): void {
+  private handleSelectedCrewMovement(delta: number): boolean {
     if (this.selectedAgentId === null) {
-      return;
+      return false;
     }
 
     const selectedCrew = this.crewUnits.get(this.selectedAgentId);
     if (selectedCrew === undefined) {
       this.setSelectedAgent(null);
-      return;
+      return false;
     }
 
     const vector = resolveMovementVector({
@@ -552,7 +645,7 @@ export class StationScene extends Phaser.Scene {
     const moving = vector.x !== 0 || vector.y !== 0;
     selectedCrew.setManualMovement(moving);
     if (!moving) {
-      return;
+      return false;
     }
 
     const distance = (CREW_MOVE_SPEED_PX_PER_SECOND * delta) / 1000;
@@ -565,42 +658,58 @@ export class StationScene extends Phaser.Scene {
       CREW_MOVEMENT_BOUNDS
     );
     selectedCrew.setPosition(next.x, next.y);
+    return true;
   }
 
-  private updateAmbientCrewMovement(now: number, delta: number): void {
+  private updateAmbientCrewMovement(now: number, delta: number, selectedManualMovement: boolean): void {
     const distanceFactor = delta / 1000;
 
     for (const [agentId, crew] of this.crewUnits) {
-      if (agentId === this.selectedAgentId) {
+      const motionMode = resolveCrewMotionMode({
+        isSelected: agentId === this.selectedAgentId,
+        manualInputActive: selectedManualMovement,
+        snapshot: crew.getSnapshot(),
+        now
+      });
+      if (motionMode === 'manual') {
+        continue;
+      }
+      if (motionMode === 'idle') {
+        crew.setManualMovement(false);
         continue;
       }
 
-      const roamState = this.getOrCreateRoamState(agentId, now);
-      if (now >= roamState.nextTurnAt) {
-        this.retargetRoamState(roamState, now);
+      const current = crew.getPosition();
+      const zone = zoneForCrewState(crew.getSnapshot().state);
+      const roamState = this.getOrCreateRoamState(agentId, zone, now);
+      const target = zoneTarget(agentId, zone);
+      const dx = target.x - current.x;
+      const dy = target.y - current.y;
+      const distanceToZone = Math.hypot(dx, dy);
+      if (distanceToZone > ZONE_REACHED_DISTANCE_PX) {
+        const speed = Phaser.Math.Between(CREW_ROAM_SPEED_RANGE.min, CREW_ROAM_SPEED_RANGE.max);
+        roamState.vx = (dx / Math.max(1, distanceToZone)) * speed;
+        roamState.vy = (dy / Math.max(1, distanceToZone)) * speed;
+      } else if (now >= roamState.nextTurnAt) {
+        this.retargetRoamState(roamState, zone, now);
       }
 
-      const current = crew.getPosition();
-      const next = clampPosition(
+      let next = clampPosition(
         {
           x: current.x + roamState.vx * distanceFactor,
           y: current.y + roamState.vy * distanceFactor
         },
         CREW_MOVEMENT_BOUNDS
       );
-
-      const hitHorizontalBoundary =
-        next.x === CREW_MOVEMENT_BOUNDS.minX || next.x === CREW_MOVEMENT_BOUNDS.maxX;
-      const hitVerticalBoundary =
-        next.y === CREW_MOVEMENT_BOUNDS.minY || next.y === CREW_MOVEMENT_BOUNDS.maxY;
-
-      if (hitHorizontalBoundary) {
-        roamState.vx *= -1;
-        roamState.nextTurnAt = now + this.randomTurnIntervalMs();
-      }
-      if (hitVerticalBoundary) {
-        roamState.vy *= -1;
-        roamState.nextTurnAt = now + this.randomTurnIntervalMs();
+      const nextDistance = Math.hypot(target.x - next.x, target.y - next.y);
+      if (nextDistance > 170) {
+        next = clampPosition(
+          {
+            x: current.x + (dx / Math.max(1, distanceToZone)) * CREW_ROAM_SPEED_RANGE.max * distanceFactor,
+            y: current.y + (dy / Math.max(1, distanceToZone)) * CREW_ROAM_SPEED_RANGE.max * distanceFactor
+          },
+          CREW_MOVEMENT_BOUNDS
+        );
       }
 
       crew.setManualMovement(true);
@@ -608,9 +717,12 @@ export class StationScene extends Phaser.Scene {
     }
   }
 
-  private getOrCreateRoamState(agentId: string, now: number): CrewRoamState {
+  private getOrCreateRoamState(agentId: string, zone: StationZone, now: number): CrewRoamState {
     const existing = this.crewRoamStates.get(agentId);
     if (existing !== undefined) {
+      if (existing.zone !== zone) {
+        this.retargetRoamState(existing, zone, now);
+      }
       return existing;
     }
 
@@ -621,18 +733,20 @@ export class StationScene extends Phaser.Scene {
     const initialState: CrewRoamState = {
       vx: Math.cos(initialAngle) * initialSpeed,
       vy: Math.sin(initialAngle) * initialSpeed,
-      nextTurnAt: now + this.randomTurnIntervalMs()
+      nextTurnAt: now + this.randomTurnIntervalMs(),
+      zone
     };
 
     this.crewRoamStates.set(agentId, initialState);
     return initialState;
   }
 
-  private retargetRoamState(state: CrewRoamState, now: number): void {
+  private retargetRoamState(state: CrewRoamState, zone: StationZone, now: number): void {
     const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
     const speed = Phaser.Math.Between(CREW_ROAM_SPEED_RANGE.min, CREW_ROAM_SPEED_RANGE.max);
     state.vx = Math.cos(angle) * speed;
     state.vy = Math.sin(angle) * speed;
+    state.zone = zone;
     state.nextTurnAt = now + this.randomTurnIntervalMs();
   }
 
@@ -664,6 +778,46 @@ export class StationScene extends Phaser.Scene {
 
     this.hud.setSelectedAgent(this.selectedAgentId);
     this.tooltip.setSelectedAgent(this.selectedAgentId);
+    if (!this.followSelectedAgent) {
+      this.cameras.main.setZoom(1);
+      this.cameras.main.setScroll(0, 0);
+    }
+  }
+
+  private applyMissionReward(rewardXp: number, now: number): void {
+    const reward = Math.max(1, rewardXp || MISSION_REWARD_XP);
+    const state = getStationState();
+    for (const [agentId, crew] of this.crewUnits) {
+      if (crew.applyMissionReward(reward, now)) {
+        state.updateCrewState(agentId, crew.toPersistedState());
+      }
+    }
+  }
+
+  private updateCameraFollow(): void {
+    const camera = this.cameras.main;
+    if (!this.followSelectedAgent || this.selectedAgentId === null) {
+      camera.setZoom(1);
+      camera.setScroll(0, 0);
+      return;
+    }
+
+    const crew = this.crewUnits.get(this.selectedAgentId);
+    if (crew === undefined) {
+      camera.setZoom(1);
+      camera.setScroll(0, 0);
+      return;
+    }
+
+    const zoom = 1.12;
+    camera.setZoom(zoom);
+    const { x, y } = crew.getPosition();
+    const viewportWidth = camera.width / zoom;
+    const viewportHeight = camera.height / zoom;
+    const targetScrollX = clamp(x - viewportWidth / 2, 0, STATION_DIMENSIONS.width - viewportWidth);
+    const targetScrollY = clamp(y - viewportHeight / 2, 0, STATION_DIMENSIONS.height - viewportHeight);
+    camera.scrollX = Phaser.Math.Linear(camera.scrollX, targetScrollX, 0.12);
+    camera.scrollY = Phaser.Math.Linear(camera.scrollY, targetScrollY, 0.12);
   }
 
   private cycleSelection(direction: 1 | -1): void {
@@ -696,4 +850,8 @@ function hashString(value: string): number {
   }
 
   return Math.abs(hash);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

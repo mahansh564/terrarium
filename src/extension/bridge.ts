@@ -24,6 +24,9 @@ export function isExtensionToWebviewMessage(
     case 'agent_added':
     case 'state_sync':
     case 'health_signal':
+    case 'project_metrics':
+    case 'action_center_sync':
+    case 'mission_sync':
       return 'payload' in message;
     case 'reset':
       return true;
@@ -49,6 +52,8 @@ export function isWebviewToExtensionMessage(
     case 'ready':
     case 'open_add_agent':
       return true;
+    case 'update_runtime_preferences':
+      return isRuntimePreferencesPayload((message as { payload?: unknown }).payload);
     case 'persist_state':
       return isPersistedStatsFile((message as { payload?: unknown }).payload);
     default:
@@ -130,4 +135,25 @@ function isPersistedStatsFile(value: unknown): value is PersistedStatsFile {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isRuntimePreferencesPayload(
+  value: unknown
+): value is {
+  stationEffectsEnabled?: boolean;
+  audioEnabled?: boolean;
+  simulationSpeed?: number;
+} {
+  if (!isObject(value)) {
+    return false;
+  }
+
+  const stationEffectsEnabled = value.stationEffectsEnabled;
+  const audioEnabled = value.audioEnabled;
+  const simulationSpeed = value.simulationSpeed;
+  const validStationEffects =
+    stationEffectsEnabled === undefined || typeof stationEffectsEnabled === 'boolean';
+  const validAudio = audioEnabled === undefined || typeof audioEnabled === 'boolean';
+  const validSimulationSpeed = simulationSpeed === undefined || typeof simulationSpeed === 'number';
+  return validStationEffects && validAudio && validSimulationSpeed;
 }

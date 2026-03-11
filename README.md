@@ -39,6 +39,10 @@ CodeOrbit reads settings from the `codeorbit` namespace in workspace settings.
 
 - `codeorbit.maxFps` (`number`, default `30`, min `1`, max `30`)
 - `codeorbit.stationEffectsEnabled` (`boolean`, default `true`)
+- `codeorbit.audioEnabled` (`boolean`, default `true`)
+- `codeorbit.simulationSpeed` (`number`, default `1`, enum: `0.75 | 1 | 1.25`)
+- `codeorbit.localMetrics.enabled` (`boolean`, default `true`)
+- `codeorbit.localMetrics.pollMs` (`number`, default `20000`, min `5000`)
 - `codeorbit.agents` (`AgentConfig[]`, default `[]`)
 - `codeorbit.cursorNativeAddAgentBridge.enabled` (`boolean`, default `true`)
 - `codeorbit.cursorNativeAddAgentBridge.commandIds` (`string[]`, default includes Cursor agent/composer new commands)
@@ -63,6 +67,10 @@ Each agent entry supports:
 {
   "codeorbit.maxFps": 24,
   "codeorbit.stationEffectsEnabled": true,
+  "codeorbit.audioEnabled": true,
+  "codeorbit.simulationSpeed": 1,
+  "codeorbit.localMetrics.enabled": true,
+  "codeorbit.localMetrics.pollMs": 20000,
   "codeorbit.cursorNativeAddAgentBridge.enabled": true,
   "codeorbit.cursorNativeAddAgentBridge.commandIds": [
     "glass.newAgent",
@@ -145,6 +153,9 @@ Cursor `agent-transcripts/*.jsonl` message records are also supported. CodeOrbit
 - `CodeOrbit: Open Station`
 - `CodeOrbit: Add Agent`
 - `CodeOrbit: Reset Ecosystem`
+- `CodeOrbit: Toggle Station Effects`
+- `CodeOrbit: Toggle Ambient Audio`
+- `CodeOrbit: Cycle Simulation Speed`
 
 ## Development Commands
 

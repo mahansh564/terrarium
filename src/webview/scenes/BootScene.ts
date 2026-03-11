@@ -34,10 +34,7 @@ export class BootScene extends Phaser.Scene {
     }
 
     for (const crewTexture of CREW_TEXTURE_ASSETS) {
-      this.load.svg(crewTexture.key, toPhaserSafeDataUri(crewTexture.url), {
-        width: crewTexture.width,
-        height: crewTexture.height
-      });
+      this.load.image(crewTexture.key, toPhaserSafeDataUri(crewTexture.url));
     }
 
     this.load.json(STATION_TILEMAP_KEY, toPhaserSafeDataUri(STATION_TILEMAP_URL));

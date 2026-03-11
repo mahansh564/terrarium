@@ -1,4 +1,4 @@
-import type { HealthSignal } from '@shared/types';
+import type { HealthSignal, ProjectMetricsSnapshot } from '@shared/types';
 
 interface ModuleNode {
   core: Phaser.GameObjects.Arc;
@@ -12,6 +12,7 @@ interface ModuleNode {
 export class StationInfrastructure {
   private readonly nodes: ModuleNode[] = [];
   private charge = 0;
+  private stressAccumulator = 0;
 
   /**
    * Creates infrastructure system.
@@ -39,11 +40,29 @@ export class StationInfrastructure {
   }
 
   /**
+   * Applies latest project metrics to infrastructure pressure.
+   *
+   * @param metrics Latest project metrics snapshot.
+   */
+  applyMetrics(metrics: ProjectMetricsSnapshot): void {
+    const dirtyScore = metrics.dirtyFileCount === null ? 0 : Math.min(1, metrics.dirtyFileCount / 30);
+    const failureScore = Math.min(1, metrics.failureStreak / 4);
+    const pressure = dirtyScore * 0.55 + failureScore * 0.45;
+    this.charge = Math.max(0, Math.min(100, this.charge - Math.round(pressure * 6)));
+    this.stressAccumulator += pressure;
+  }
+
+  /**
    * Advances infrastructure animations and cleanup.
    *
    * @param delta Delta frame time.
    */
   update(delta: number): void {
+    if (this.stressAccumulator >= 1.2) {
+      this.dimNode();
+      this.stressAccumulator = 0;
+    }
+
     for (let i = this.nodes.length - 1; i >= 0; i -= 1) {
       const node = this.nodes[i];
       if (node === undefined) {

@@ -19,7 +19,8 @@ describe('cursor composer storage sync helpers', () => {
           unifiedMode: 'agent',
           name: '  Checkout Fix  ',
           createdAt: 100,
-          lastUpdatedAt: 120
+          lastUpdatedAt: 120,
+          hasBlockingPendingActions: true
         },
         { composerId: 'chat-1', unifiedMode: 'chat' },
         { composerId: 'archived-agent', unifiedMode: 'agent', isArchived: true },
@@ -37,7 +38,8 @@ describe('cursor composer storage sync helpers', () => {
         unifiedMode: 'agent',
         name: 'Checkout Fix',
         createdAt: 100,
-        lastUpdatedAt: 120
+        lastUpdatedAt: 120,
+        hasBlockingPendingActions: true
       },
       {
         composerId: 'agent-2',
@@ -115,19 +117,21 @@ describe('cursor composer storage sync helpers', () => {
 
   it('diffs composer snapshots', () => {
     const previous = [
-      { composerId: 'agent-1', unifiedMode: 'agent', name: 'Checkout Fix' },
-      { composerId: 'agent-2', unifiedMode: 'agent' }
+      { composerId: 'agent-1', unifiedMode: 'agent', name: 'Checkout Fix', lastUpdatedAt: 100 },
+      { composerId: 'agent-2', unifiedMode: 'agent', hasBlockingPendingActions: true }
     ] as const;
 
     const next = [
-      { composerId: 'agent-1', unifiedMode: 'agent', name: 'Checkout Flow Fix' },
+      { composerId: 'agent-1', unifiedMode: 'agent', name: 'Checkout Flow Fix', lastUpdatedAt: 101 },
       { composerId: 'agent-3', unifiedMode: 'agent' }
     ] as const;
 
     expect(diffCursorComposerRecords(previous, next)).toEqual({
       added: [{ composerId: 'agent-3', unifiedMode: 'agent' }],
-      updated: [{ composerId: 'agent-1', unifiedMode: 'agent', name: 'Checkout Flow Fix' }],
-      removed: [{ composerId: 'agent-2', unifiedMode: 'agent' }]
+      updated: [
+        { composerId: 'agent-1', unifiedMode: 'agent', name: 'Checkout Flow Fix', lastUpdatedAt: 101 }
+      ],
+      removed: [{ composerId: 'agent-2', unifiedMode: 'agent', hasBlockingPendingActions: true }]
     });
   });
 
