@@ -3,19 +3,25 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import {
+  clampLocalMetricsPollMs,
   clampMaxFps,
   DEFAULT_STATION_CONFIG,
+  DEFAULT_LOCAL_METRICS_POLL_MS,
+  normalizeSimulationSpeed,
   PERSISTED_SCHEMA_VERSION
 } from '@shared/constants';
 import type {
   AgentAction,
   AgentConfig,
+  AgentEvent,
   ExtensionToWebviewMessage,
   HealthSignal,
+  ProjectMetricsSnapshot,
   PersistedStatsFile,
   StationConfig,
   WebviewToExtensionMessage
 } from '@shared/types';
+import { ActionCenterTracker } from './actionCenter';
 import { AgentWatcherManager } from './agentWatcher';
 import { ExtensionWebviewBridge } from './bridge';
 import {
@@ -34,7 +40,11 @@ import {
   CursorComposerStorageSync,
   type CursorComposerRecord
 } from './cursorComposerStorageSync';
-import { mergeRuntimeCursorAgents } from './cursorRuntimeAgents';
+import { overlayPendingInputRequestsOnPersistedState } from './initState';
+import { synthesizeCursorRuntimeComposerEvents } from './cursorRuntimeEvents';
+import { mergeRuntimeCursorAgents, resolveVisibleCursorAgentIdentity } from './cursorRuntimeAgents';
+import { LocalProjectMetricsMonitor } from './localMetrics';
+import { MissionTracker } from './missions';
 import { WorkspaceStatsStore } from './persistence';
 
 const PANEL_VIEW_TYPE = 'codeorbit.panel';
@@ -55,6 +65,11 @@ interface CommandsWithExecutionEvents {
     thisArgs?: unknown,
     disposables?: vscode.Disposable[]
   ): vscode.Disposable;
+}
+
+interface LocalMetricsConfig {
+  enabled: boolean;
+  pollMs: number;
 }
 
 /**
@@ -86,22 +101,113 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
   let cursorRuntimeComposers: readonly CursorComposerRecord[] = [];
   let cursorStorageSyncGeneration = 0;
   let lastStorageSyncWarningAt = Number.NEGATIVE_INFINITY;
+  let lastLocalMetricsWarningAt = Number.NEGATIVE_INFINITY;
   let messageSubscription: vscode.Disposable | null = null;
+  const actionCenterTracker = new ActionCenterTracker();
+  const missionTracker = new MissionTracker();
+  let localMetricsConfig = readLocalMetricsConfig();
+  let projectMetrics: ProjectMetricsSnapshot = createEmptyProjectMetricsSnapshot();
+  let localMetricsMonitor: LocalProjectMetricsMonitor | null = null;
+  let localMetricsWorkspacePath: string | null = null;
+
+  const postActionCenterSync = async (): Promise<void> => {
+    await postIfPanelOpen(bridge, {
+      type: 'action_center_sync',
+      payload: actionCenterTracker.snapshot()
+    });
+  };
+
+  const postMissionSync = async (): Promise<void> => {
+    await postIfPanelOpen(bridge, {
+      type: 'mission_sync',
+      payload: missionTracker.snapshot()
+    });
+  };
+
+  const postProjectMetrics = async (): Promise<void> => {
+    await postIfPanelOpen(bridge, {
+      type: 'project_metrics',
+      payload: projectMetrics
+    });
+  };
+
+  const showLocalMetricsWarning = (message: string): void => {
+    const now = Date.now();
+    if (now - lastLocalMetricsWarningAt < 30_000) {
+      return;
+    }
+    lastLocalMetricsWarningAt = now;
+    void vscode.window.showWarningMessage(`CodeOrbit local metrics warning: ${message}`);
+  };
+
+  const refreshLocalMetricsMonitor = (): void => {
+    localMetricsConfig = readLocalMetricsConfig();
+    const workspacePath = getPrimaryWorkspaceFolderPath();
+    if (!localMetricsConfig.enabled || workspacePath === null) {
+      localMetricsMonitor?.stop();
+      localMetricsMonitor = null;
+      localMetricsWorkspacePath = null;
+      projectMetrics = {
+        ...projectMetrics,
+        ts: Date.now(),
+        dirtyFileCount: null
+      };
+      void postProjectMetrics();
+      return;
+    }
+
+    if (localMetricsMonitor === null || localMetricsWorkspacePath !== workspacePath) {
+      localMetricsMonitor?.stop();
+      localMetricsMonitor = new LocalProjectMetricsMonitor({
+        workspacePath,
+        pollMs: localMetricsConfig.pollMs,
+        onSnapshot: (snapshot) => {
+          projectMetrics = snapshot;
+          void postProjectMetrics();
+        },
+        onError: (error) => {
+          showLocalMetricsWarning(error.message);
+        }
+      });
+      localMetricsWorkspacePath = workspacePath;
+      localMetricsMonitor.start();
+      return;
+    }
+
+    localMetricsMonitor.setPollMs(localMetricsConfig.pollMs);
+  };
+
+  const publishAgentEvent = (event: AgentEvent): void => {
+    localMetricsMonitor?.applyAgentEvent(event);
+
+    const actionCenterChanged = actionCenterTracker.applyEvent(event);
+    const missionChanged = missionTracker.applyEvent(event);
+
+    void postIfPanelOpen(bridge, {
+      type: 'agent_event',
+      payload: event
+    });
+
+    if (actionCenterChanged) {
+      void postActionCenterSync();
+    }
+
+    if (missionChanged) {
+      void postMissionSync();
+    }
+
+    const signal = toHealthSignal(event.kind, event.agentId, event.ts);
+    if (signal !== null) {
+      void postIfPanelOpen(bridge, {
+        type: 'health_signal',
+        payload: signal
+      });
+    }
+  };
 
   const watcher = new AgentWatcherManager(
     (event) => {
-      void postIfPanelOpen(bridge, {
-        type: 'agent_event',
-        payload: event
-      });
-
-      const signal = toHealthSignal(event.kind, event.agentId, event.ts);
-      if (signal !== null) {
-        void postIfPanelOpen(bridge, {
-          type: 'health_signal',
-          payload: signal
-        });
-      }
+      publishAgentEvent(event);
     },
     (error) => {
       void vscode.window.showWarningMessage(`CodeOrbit watcher warning: ${error.message}`);
@@ -117,13 +223,62 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
     });
 
   const postCurrentInit = async (): Promise<void> => {
+    const config = readStationConfig(resolveRuntimeAgentConfigs());
+    const persisted = overlayPendingInputRequestsOnPersistedState({
+      persisted: persistedState,
+      configuredAgents: config.agents,
+      pendingRequests: actionCenterTracker.snapshot()
+    });
+
     await postIfPanelOpen(bridge, {
       type: 'init',
       payload: {
-        config: readStationConfig(resolveRuntimeAgentConfigs()),
-        persisted: persistedState
+        config,
+        persisted
       }
     });
+    await postActionCenterSync();
+    await postMissionSync();
+    await postProjectMetrics();
+  };
+
+  const applyRuntimePreferenceUpdates = async (payload: {
+    stationEffectsEnabled?: boolean;
+    audioEnabled?: boolean;
+    simulationSpeed?: number;
+  }): Promise<void> => {
+    const settings = vscode.workspace.getConfiguration('codeorbit');
+    const updates: Thenable<void>[] = [];
+
+    if (payload.stationEffectsEnabled !== undefined) {
+      updates.push(
+        settings.update(
+          'stationEffectsEnabled',
+          payload.stationEffectsEnabled,
+          vscode.ConfigurationTarget.Workspace
+        )
+      );
+    }
+
+    if (payload.audioEnabled !== undefined) {
+      updates.push(
+        settings.update('audioEnabled', payload.audioEnabled, vscode.ConfigurationTarget.Workspace)
+      );
+    }
+
+    if (payload.simulationSpeed !== undefined) {
+      updates.push(
+        settings.update(
+          'simulationSpeed',
+          payload.simulationSpeed,
+          vscode.ConfigurationTarget.Workspace
+        )
+      );
+    }
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+    }
   };
 
   const handleMessage = async (message: WebviewToExtensionMessage): Promise<void> => {
@@ -139,6 +294,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
       }
       case 'open_add_agent': {
         await vscode.commands.executeCommand('codeorbit.addAgent');
+        break;
+      }
+      case 'update_runtime_preferences': {
+        await applyRuntimePreferenceUpdates(message.payload);
         break;
       }
       default:
@@ -265,7 +424,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
           return;
         }
 
+        const configuredAgents = readAgentConfigs();
+        const transcriptRootPath = resolveCursorProjectTranscriptPath(workspaceFolder.uri.fsPath);
+        const syntheticEvents = synthesizeCursorRuntimeComposerEvents({
+          previousComposers: cursorRuntimeComposers,
+          addedComposers: event.added,
+          updatedComposers: event.updated,
+          ...(transcriptRootPath !== null
+            ? {
+                resolveAgentIdentity: (composer: CursorComposerRecord) =>
+                  resolveVisibleCursorAgentIdentity(configuredAgents, transcriptRootPath, composer)
+              }
+            : {})
+        });
         updateCursorRuntimeComposers(event.all);
+        for (const syntheticEvent of syntheticEvents) {
+          publishAgentEvent(syntheticEvent);
+        }
       },
       onError: (error) => {
         showStorageSyncWarning(error.message);
@@ -287,6 +462,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
   };
 
   reloadWatchers();
+  refreshLocalMetricsMonitor();
   await refreshCursorStorageSync();
 
   const commandNamespace = vscode.commands;
@@ -320,17 +496,54 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
         version: PERSISTED_SCHEMA_VERSION,
         crew: {}
       };
+      actionCenterTracker.reset();
+      missionTracker.reset();
 
       await statsStore.reset();
       await postIfPanelOpen(bridge, { type: 'reset' });
       await postIfPanelOpen(bridge, { type: 'state_sync', payload: persistedState });
+      await postActionCenterSync();
+      await postMissionSync();
       void vscode.window.showInformationMessage('CodeOrbit station has been reset.');
+    }),
+    vscode.commands.registerCommand('codeorbit.toggleStationEffects', async () => {
+      const settings = vscode.workspace.getConfiguration('codeorbit');
+      const current = settings.get<boolean>(
+        'stationEffectsEnabled',
+        DEFAULT_STATION_CONFIG.stationEffectsEnabled
+      );
+      await settings.update(
+        'stationEffectsEnabled',
+        !current,
+        vscode.ConfigurationTarget.Workspace
+      );
+    }),
+    vscode.commands.registerCommand('codeorbit.toggleAudio', async () => {
+      const settings = vscode.workspace.getConfiguration('codeorbit');
+      const current = settings.get<boolean>('audioEnabled', DEFAULT_STATION_CONFIG.audioEnabled);
+      await settings.update('audioEnabled', !current, vscode.ConfigurationTarget.Workspace);
+    }),
+    vscode.commands.registerCommand('codeorbit.cycleSimulationSpeed', async () => {
+      const settings = vscode.workspace.getConfiguration('codeorbit');
+      const current = settings.get<number>(
+        'simulationSpeed',
+        DEFAULT_STATION_CONFIG.simulationSpeed
+      );
+      const options = [0.75, 1, 1.25];
+      const currentIndex = options.indexOf(current ?? 1);
+      const next = options[(currentIndex + 1 + options.length) % options.length] ?? 1;
+      await settings.update('simulationSpeed', next, vscode.ConfigurationTarget.Workspace);
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       const agentsChanged = event.affectsConfiguration('codeorbit.agents');
       const runtimeChanged =
         event.affectsConfiguration('codeorbit.maxFps') ||
-        event.affectsConfiguration('codeorbit.stationEffectsEnabled');
+        event.affectsConfiguration('codeorbit.stationEffectsEnabled') ||
+        event.affectsConfiguration('codeorbit.audioEnabled') ||
+        event.affectsConfiguration('codeorbit.simulationSpeed');
+      const localMetricsChanged =
+        event.affectsConfiguration('codeorbit.localMetrics.enabled') ||
+        event.affectsConfiguration('codeorbit.localMetrics.pollMs');
       const cursorBridgeChanged =
         event.affectsConfiguration('codeorbit.cursorNativeAddAgentBridge.enabled') ||
         event.affectsConfiguration('codeorbit.cursorNativeAddAgentBridge.commandIds') ||
@@ -338,7 +551,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
         event.affectsConfiguration('codeorbit.cursorNativeAddAgentBridge.storageFallbackEnabled') ||
         event.affectsConfiguration('codeorbit.cursorNativeAddAgentBridge.storageFallbackPollMs');
 
-      if (!agentsChanged && !runtimeChanged && !cursorBridgeChanged) {
+      if (!agentsChanged && !runtimeChanged && !cursorBridgeChanged && !localMetricsChanged) {
         return;
       }
 
@@ -353,12 +566,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
         reloadWatchers();
       }
 
-      if (agentsChanged || runtimeChanged || cursorBridgeChanged) {
+      if (localMetricsChanged) {
+        refreshLocalMetricsMonitor();
+      }
+
+      if (agentsChanged || runtimeChanged || cursorBridgeChanged || localMetricsChanged) {
         void postCurrentInit();
       }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       void refreshCursorStorageSync();
+      refreshLocalMetricsMonitor();
       reloadWatchers();
       void postCurrentInit();
     }),
@@ -368,6 +586,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
         watcher.dispose();
         cursorStorageSync?.dispose();
         cursorStorageSync = null;
+        localMetricsMonitor?.stop();
+        localMetricsMonitor = null;
+        localMetricsWorkspacePath = null;
         cursorStorageSyncGeneration += 1;
         testMessageDispatcher = null;
         testMessageProbe = null;
@@ -522,7 +743,31 @@ function readStationConfig(agents = readAgentConfigs()): StationConfig {
     stationEffectsEnabled: settings.get<boolean>(
       'stationEffectsEnabled',
       DEFAULT_STATION_CONFIG.stationEffectsEnabled
+    ),
+    audioEnabled: settings.get<boolean>('audioEnabled', DEFAULT_STATION_CONFIG.audioEnabled),
+    simulationSpeed: normalizeSimulationSpeed(
+      settings.get<number>('simulationSpeed', DEFAULT_STATION_CONFIG.simulationSpeed)
     )
+  };
+}
+
+function readLocalMetricsConfig(): LocalMetricsConfig {
+  const settings = vscode.workspace.getConfiguration('codeorbit');
+  return {
+    enabled: settings.get<boolean>('localMetrics.enabled', true),
+    pollMs: clampLocalMetricsPollMs(
+      settings.get<unknown>('localMetrics.pollMs', DEFAULT_LOCAL_METRICS_POLL_MS)
+    )
+  };
+}
+
+function createEmptyProjectMetricsSnapshot(): ProjectMetricsSnapshot {
+  return {
+    ts: Date.now(),
+    dirtyFileCount: null,
+    lastTestPassAt: null,
+    lastTestFailAt: null,
+    failureStreak: 0
   };
 }
 

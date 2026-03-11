@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentConfig } from '../src/shared/types';
-import { mergeRuntimeCursorAgents } from '../src/extension/cursorRuntimeAgents';
+import {
+  mergeRuntimeCursorAgents,
+  resolveVisibleCursorAgentIdentity
+} from '../src/extension/cursorRuntimeAgents';
 
 describe('runtime cursor agent overlay', () => {
   it('maps Cursor composers to runtime agents with Cursor names and fallback names', () => {
@@ -90,5 +93,39 @@ describe('runtime cursor agent overlay', () => {
         color: '#58A6FF'
       }
     ]);
+  });
+
+  it('resolves duplicate composer transcript path to configured visible agent identity', () => {
+    const configuredAgents: AgentConfig[] = [
+      {
+        id: 'existing-cursor-custom',
+        name: 'My Cursor Agent',
+        transcriptPath: '/cursor/project/agent-transcripts/abc1234567/abc1234567.jsonl',
+        crewRole: 'analyst'
+      }
+    ];
+
+    const identity = resolveVisibleCursorAgentIdentity(
+      configuredAgents,
+      '/cursor/project/agent-transcripts',
+      { composerId: 'abc1234567', name: 'Composer Name' }
+    );
+
+    expect(identity).toEqual({
+      agentId: 'existing-cursor-custom',
+      agentName: 'My Cursor Agent'
+    });
+  });
+
+  it('falls back to runtime cursor identity when no configured transcript match exists', () => {
+    const identity = resolveVisibleCursorAgentIdentity([], '/cursor/project/agent-transcripts', {
+      composerId: 'def8901234',
+      name: 'Inventory Rewrite'
+    });
+
+    expect(identity).toEqual({
+      agentId: 'cursor-def8901234',
+      agentName: 'Inventory Rewrite'
+    });
   });
 });
