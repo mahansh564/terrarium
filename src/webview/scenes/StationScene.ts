@@ -26,6 +26,14 @@ import { HUD } from '../ui/HUD';
 import { Tooltip } from '../ui/Tooltip';
 
 const CREW_MOVE_SPEED_PX_PER_SECOND = 118;
+const CREW_ROAM_SPEED_RANGE = {
+  min: 24,
+  max: 44
+} as const;
+const CREW_ROAM_TURN_INTERVAL_MS = {
+  min: 1400,
+  max: 4200
+} as const;
 const CREW_MOVEMENT_BOUNDS = {
   minX: 28,
   maxX: STATION_DIMENSIONS.width - 28,
@@ -51,6 +59,12 @@ interface BackgroundStar {
   size: number;
   color: number;
   phase: number;
+}
+
+interface CrewRoamState {
+  vx: number;
+  vy: number;
+  nextTurnAt: number;
 }
 
 /**
@@ -86,6 +100,7 @@ export class StationScene extends Phaser.Scene {
   private dynamicSkyLayer: Phaser.GameObjects.Graphics | null = null;
   private viewportFrame: Phaser.GameObjects.Graphics | null = null;
   private readonly starPoints: BackgroundStar[] = [];
+  private readonly crewRoamStates = new Map<string, CrewRoamState>();
 
   /**
    * Creates the station scene.
@@ -157,6 +172,7 @@ export class StationScene extends Phaser.Scene {
     const state = getStationState();
     this.handleKeyboardSelection();
     this.handleSelectedCrewMovement(delta);
+    this.updateAmbientCrewMovement(time, delta);
 
     const events = state.drainAgentEvents();
     for (const event of events) {
@@ -205,6 +221,7 @@ export class StationScene extends Phaser.Scene {
       }
       crew.destroy();
       this.crewUnits.delete(agentId);
+      this.crewRoamStates.delete(agentId);
     }
 
     for (let index = 0; index < agents.length; index += 1) {
@@ -550,6 +567,79 @@ export class StationScene extends Phaser.Scene {
     selectedCrew.setPosition(next.x, next.y);
   }
 
+  private updateAmbientCrewMovement(now: number, delta: number): void {
+    const distanceFactor = delta / 1000;
+
+    for (const [agentId, crew] of this.crewUnits) {
+      if (agentId === this.selectedAgentId) {
+        continue;
+      }
+
+      const roamState = this.getOrCreateRoamState(agentId, now);
+      if (now >= roamState.nextTurnAt) {
+        this.retargetRoamState(roamState, now);
+      }
+
+      const current = crew.getPosition();
+      const next = clampPosition(
+        {
+          x: current.x + roamState.vx * distanceFactor,
+          y: current.y + roamState.vy * distanceFactor
+        },
+        CREW_MOVEMENT_BOUNDS
+      );
+
+      const hitHorizontalBoundary =
+        next.x === CREW_MOVEMENT_BOUNDS.minX || next.x === CREW_MOVEMENT_BOUNDS.maxX;
+      const hitVerticalBoundary =
+        next.y === CREW_MOVEMENT_BOUNDS.minY || next.y === CREW_MOVEMENT_BOUNDS.maxY;
+
+      if (hitHorizontalBoundary) {
+        roamState.vx *= -1;
+        roamState.nextTurnAt = now + this.randomTurnIntervalMs();
+      }
+      if (hitVerticalBoundary) {
+        roamState.vy *= -1;
+        roamState.nextTurnAt = now + this.randomTurnIntervalMs();
+      }
+
+      crew.setManualMovement(true);
+      crew.setPosition(next.x, next.y);
+    }
+  }
+
+  private getOrCreateRoamState(agentId: string, now: number): CrewRoamState {
+    const existing = this.crewRoamStates.get(agentId);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const hash = hashString(agentId);
+    const initialAngle = ((hash % 360) * Math.PI) / 180;
+    const speedSpread = CREW_ROAM_SPEED_RANGE.max - CREW_ROAM_SPEED_RANGE.min;
+    const initialSpeed = CREW_ROAM_SPEED_RANGE.min + (hash % (speedSpread + 1));
+    const initialState: CrewRoamState = {
+      vx: Math.cos(initialAngle) * initialSpeed,
+      vy: Math.sin(initialAngle) * initialSpeed,
+      nextTurnAt: now + this.randomTurnIntervalMs()
+    };
+
+    this.crewRoamStates.set(agentId, initialState);
+    return initialState;
+  }
+
+  private retargetRoamState(state: CrewRoamState, now: number): void {
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const speed = Phaser.Math.Between(CREW_ROAM_SPEED_RANGE.min, CREW_ROAM_SPEED_RANGE.max);
+    state.vx = Math.cos(angle) * speed;
+    state.vy = Math.sin(angle) * speed;
+    state.nextTurnAt = now + this.randomTurnIntervalMs();
+  }
+
+  private randomTurnIntervalMs(): number {
+    return Phaser.Math.Between(CREW_ROAM_TURN_INTERVAL_MS.min, CREW_ROAM_TURN_INTERVAL_MS.max);
+  }
+
   private setSelectedAgent(agentId: string | null): void {
     const nextAgentId = agentId !== null && this.crewUnits.has(agentId) ? agentId : null;
     if (this.selectedAgentId === nextAgentId) {
@@ -597,4 +687,13 @@ function demoAgent(): AgentConfig {
     transcriptPath: '',
     crewRole: 'engineer'
   };
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+
+  return Math.abs(hash);
 }
