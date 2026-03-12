@@ -126,12 +126,14 @@ export class Tooltip {
 
     const pinned = this.selectedAgentId === visibleAgentId && this.hoveredAgentId === null;
     const snapshot = crew.getSnapshot();
+    const activity = crew.getActivity();
     const moodLabel = snapshot.mood > 0 ? `+${snapshot.mood}` : `${snapshot.mood}`;
     const requestLine = snapshot.requestingInput ? '\nSTATUS: REQUESTING INPUT' : '';
+    const streamLine = activity.source === 'cursor_composer_storage' ? 'STREAM: CURSOR LIVE' : '';
 
     this.title.setText(`${crew.getAgent().name.toUpperCase()}${pinned ? ' [PINNED]' : ''}`);
     this.body.setText(
-      `STATE: ${snapshot.state.toUpperCase()}\nLEVEL: ${snapshot.level}  XP: ${snapshot.xp}\nMOOD: ${moodLabel}${requestLine}\nTAB: CYCLE  ARROW/WASD: MOVE  ESC: CLEAR`
+      `STATE: ${snapshot.state.toUpperCase()}\nNOW: ${activity.description}\nLAST EVENT: ${formatLastEvent(activity.action, activity.updatedAt)}\nLEVEL: ${snapshot.level}  XP: ${snapshot.xp}\nMOOD: ${moodLabel}${requestLine}${streamLine.length > 0 ? `\n${streamLine}` : ''}\nTAB: CYCLE  ARROW/WASD: MOVE  ESC: CLEAR`
     );
     this.title.setVisible(true);
     this.body.setVisible(true);
@@ -229,6 +231,18 @@ function drawPixelTooltip(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function formatLastEvent(action: string | null, updatedAt: number): string {
+  if (action === null) {
+    return 'NONE';
+  }
+
+  const ageMs = Math.max(0, Date.now() - updatedAt);
+  const ageSeconds = Math.floor(ageMs / 1000);
+  const ageLabel =
+    ageSeconds < 60 ? `${ageSeconds}s AGO` : `${Math.floor(ageSeconds / 60)}m AGO`;
+  return `${action.toUpperCase()}  ${ageLabel}`;
 }
 
 function stateAccentColor(state: CrewState): number {

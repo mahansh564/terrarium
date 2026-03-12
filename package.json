@@ -171,9 +171,9 @@
         },
         "codeorbit.cursorNativeAddAgentBridge.storageFallbackPollMs": {
           "type": "number",
-          "default": 2500,
+          "default": 1000,
           "minimum": 500,
-          "description": "Polling interval in milliseconds for Cursor workspace-storage deep sync."
+          "description": "Polling interval in milliseconds for Cursor workspace-storage deep sync and runtime heartbeat streaming."
         }
       }
     }

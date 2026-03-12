@@ -30,10 +30,63 @@ describe('cursor runtime composer event synthesis', () => {
         command: 'cursor-runtime-running-pulse',
         metadata: {
           source: 'cursor_composer_storage',
-          composerId: 'composer-1'
+          composerId: 'composer-1',
+          composerName: 'Checkout Agent'
         }
       }
     ]);
+  });
+
+  it('emits heartbeat pulses for unchanged active composers in current snapshot', () => {
+    const now = 8_000_000;
+    const unchangedComposer = {
+      composerId: 'composer-live',
+      unifiedMode: 'agent',
+      lastUpdatedAt: now - 300
+    } as const;
+
+    const events = synthesizeCursorRuntimeComposerEvents({
+      previousComposers: [unchangedComposer],
+      currentComposers: [unchangedComposer],
+      addedComposers: [],
+      updatedComposers: [],
+      now
+    });
+
+    expect(events).toEqual([
+      {
+        kind: 'terminal',
+        ts: now - 300,
+        agentId: 'cursor-composer-live',
+        agentName: 'Cursor Agent (composer)',
+        command: 'cursor-runtime-running-pulse',
+        metadata: {
+          source: 'cursor_composer_storage',
+          composerId: 'composer-live'
+        }
+      }
+    ]);
+  });
+
+  it('does not emit duplicate input_request while composer stays blocked', () => {
+    const now = 9_000_000;
+    const blockedComposer = {
+      composerId: 'composer-blocked',
+      unifiedMode: 'agent',
+      hasBlockingPendingActions: true,
+      lastUpdatedAt: now - 400
+    } as const;
+
+    const events = synthesizeCursorRuntimeComposerEvents({
+      previousComposers: [blockedComposer],
+      currentComposers: [blockedComposer],
+      addedComposers: [],
+      updatedComposers: [],
+      now
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.kind).toBe('terminal');
   });
 
   it('emits input_request when blocking is true and idle when blocking resolves', () => {

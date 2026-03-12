@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyActionToSnapshot,
+  deriveInitialCrewActivity,
+  describeAgentEventActivity,
   deriveRequestingInputFlag,
   deriveStateFromAction,
   levelFromXp,
@@ -65,5 +67,62 @@ describe('CrewUnit state machine', () => {
     expect(deriveRequestingInputFlag(true, 'terminal')).toBe(false);
     expect(deriveRequestingInputFlag(true, 'terminal', 'cursor_composer_storage')).toBe(true);
     expect(deriveRequestingInputFlag(true, null)).toBe(true);
+  });
+
+  it('formats rich live-activity descriptions for hover details', () => {
+    expect(
+      describeAgentEventActivity({
+        kind: 'read',
+        ts: 1,
+        agentId: 'codex',
+        path: 'src/extension/activate.ts'
+      })
+    ).toContain('Reading');
+
+    expect(
+      describeAgentEventActivity({
+        kind: 'terminal',
+        ts: 2,
+        agentId: 'cursor-live',
+        command: 'cursor-runtime-running-pulse',
+        metadata: {
+          source: 'cursor_composer_storage',
+          composerName: 'Checkout Agent'
+        }
+      })
+    ).toContain('Cursor runtime active');
+
+    expect(
+      describeAgentEventActivity({
+        kind: 'input_request',
+        ts: 3,
+        agentId: 'codex',
+        prompt: 'Need approval to run deploy script'
+      })
+    ).toContain('Needs input');
+  });
+
+  it('derives initial activity from persisted state', () => {
+    const requestingInput = deriveInitialCrewActivity({
+      xp: 200,
+      level: 4,
+      mood: 10,
+      lastState: 'requesting_input',
+      updatedAt: 1_700_000_100_000
+    });
+    expect(requestingInput.action).toBe('input_request');
+    expect(requestingInput.description).toBe('Needs input: Pending request');
+    expect(requestingInput.updatedAt).toBe(1_700_000_100_000);
+
+    const standby = deriveInitialCrewActivity({
+      xp: 120,
+      level: 3,
+      mood: 5,
+      lastState: 'standby',
+      updatedAt: 1_700_000_200_000
+    });
+    expect(standby.action).toBeNull();
+    expect(standby.description).toBe('Awaiting live events.');
+    expect(standby.updatedAt).toBe(1_700_000_200_000);
   });
 });

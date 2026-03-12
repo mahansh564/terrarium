@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const SQLITE3_COMMAND = 'sqlite3';
 const SQLITE_TIMEOUT_MS = 1500;
 const SQLITE_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
-const DB_CHANGE_DEBOUNCE_MS = 400;
+const DB_CHANGE_DEBOUNCE_MS = 120;
 
 /**
  * Active Cursor composer metadata used for runtime CodeOrbit agent overlays.
@@ -205,7 +205,9 @@ export class CursorComposerStorageSync {
       const activeComposers = await readActiveAgentComposers(this.dbPath);
       const previousComposers = Array.from(this.knownComposers.values());
       const diff = diffCursorComposerRecords(previousComposers, activeComposers);
-      if (diff.added.length > 0 || diff.updated.length > 0 || diff.removed.length > 0) {
+      const hasChanges = diff.added.length > 0 || diff.updated.length > 0 || diff.removed.length > 0;
+      const shouldEmitHeartbeat = activeComposers.length > 0;
+      if (hasChanges || shouldEmitHeartbeat) {
         this.knownComposers.clear();
         for (const composer of activeComposers) {
           this.knownComposers.set(composer.composerId, composer);

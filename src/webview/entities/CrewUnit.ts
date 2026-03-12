@@ -32,6 +32,20 @@ export interface CrewSnapshot {
 }
 
 /**
+ * Last known live activity details for a crew unit.
+ */
+export interface CrewActivitySnapshot {
+  /** Last normalized action that updated activity, or null before first event. */
+  action: AgentAction | null;
+  /** Human-readable activity summary for hover/inspection UI. */
+  description: string;
+  /** Timestamp of latest activity update in epoch milliseconds. */
+  updatedAt: number;
+  /** Optional source tag from event metadata. */
+  source?: string;
+}
+
+/**
  * Maps an action to the target crew state.
  *
  * @param action Normalized agent action.
@@ -141,6 +155,67 @@ export function deriveRequestingInputFlag(
 }
 
 /**
+ * Formats one normalized event into a concise live-activity description.
+ *
+ * @param event Incoming normalized event.
+ * @returns Human-readable activity text.
+ */
+export function describeAgentEventActivity(event: AgentEvent): string {
+  switch (event.kind) {
+    case 'read':
+      return event.path !== undefined
+        ? `Reading ${shortenMiddle(event.path, 52)}`
+        : 'Reading workspace files';
+    case 'write':
+      return event.path !== undefined
+        ? `Writing ${shortenMiddle(event.path, 52)}`
+        : 'Writing code changes';
+    case 'test_run':
+      return event.suite !== undefined
+        ? `Running tests (${shortenMiddle(event.suite, 34)})`
+        : 'Running tests';
+    case 'test_pass':
+      return event.passed !== undefined ? `Tests passed (${event.passed})` : 'Tests passed';
+    case 'test_fail':
+      return event.failed !== undefined ? `Tests failed (${event.failed})` : 'Tests failed';
+    case 'terminal': {
+      if (event.command === 'cursor-runtime-running-pulse') {
+        const runtimeName = asMetadataString(event, 'composerName');
+        return runtimeName !== undefined
+          ? `Cursor runtime active: ${shortenMiddle(runtimeName, 30)}`
+          : 'Cursor runtime active';
+      }
+
+      return event.command !== undefined
+        ? `Running command: ${shortenMiddle(normalizeInline(event.command), 48)}`
+        : 'Running terminal command';
+    }
+    case 'idle':
+      return event.reason !== undefined
+        ? `Idle: ${shortenMiddle(normalizeInline(event.reason), 52)}`
+        : 'Idle / waiting';
+    case 'input_request':
+      return event.prompt !== undefined
+        ? `Needs input: ${shortenMiddle(normalizeInline(event.prompt), 52)}`
+        : 'Awaiting user input';
+    case 'error':
+      return event.errorMessage !== undefined
+        ? `Error: ${shortenMiddle(normalizeInline(event.errorMessage), 50)}`
+        : 'Agent encountered an error';
+    case 'complete':
+      return event.taskId !== undefined
+        ? `Completed task: ${shortenMiddle(event.taskId, 38)}`
+        : 'Completed current task';
+    case 'deploy':
+      return event.environment !== undefined
+        ? `Deploying to ${shortenMiddle(event.environment, 36)}`
+        : 'Deploying changes';
+    default:
+      return 'Activity update received';
+  }
+}
+
+/**
  * Computes crew level from XP value.
  *
  * @param xp Experience points.
@@ -159,6 +234,28 @@ export function levelFromXp(xp: number): number {
 }
 
 /**
+ * Derives initial live-activity details from persisted crew state.
+ *
+ * @param persisted Persisted crew state loaded from workspace.
+ * @returns Initial live-activity snapshot for tooltip and inspection UI.
+ */
+export function deriveInitialCrewActivity(persisted: PersistedCrewState): CrewActivitySnapshot {
+  if (persisted.lastState === 'requesting_input') {
+    return {
+      action: 'input_request',
+      description: 'Needs input: Pending request',
+      updatedAt: persisted.updatedAt
+    };
+  }
+
+  return {
+    action: null,
+    description: 'Awaiting live events.',
+    updatedAt: persisted.updatedAt
+  };
+}
+
+/**
  * Crew unit entity with sprite and finite-state-machine behavior.
  */
 export class CrewUnit {
@@ -168,6 +265,7 @@ export class CrewUnit {
   private readonly commsCore: Phaser.GameObjects.Arc;
   private readonly commsText: Phaser.GameObjects.Text;
   private snapshot: CrewSnapshot;
+  private activity: CrewActivitySnapshot;
   private selected = false;
   private manualMovement = false;
 
@@ -232,6 +330,7 @@ export class CrewUnit {
       updatedAt: persisted.updatedAt,
       requestingInput: persisted.lastState === 'requesting_input'
     };
+    this.activity = deriveInitialCrewActivity(persisted);
 
     this.playStateAnimation(this.snapshot.state);
     this.updateCommsBeacon(this.snapshot.updatedAt);
@@ -254,6 +353,12 @@ export class CrewUnit {
         event.kind,
         metadataSource
       )
+    };
+    this.activity = {
+      action: event.kind,
+      description: describeAgentEventActivity(event),
+      updatedAt: event.ts,
+      ...(metadataSource !== undefined ? { source: metadataSource } : {})
     };
     this.playStateAnimation(this.snapshot.state);
     this.updateCommsBeacon(event.ts);
@@ -368,6 +473,15 @@ export class CrewUnit {
    */
   getSnapshot(): CrewSnapshot {
     return { ...this.snapshot };
+  }
+
+  /**
+   * Returns latest live-activity summary for hover/details UI.
+   *
+   * @returns Activity snapshot clone.
+   */
+  getActivity(): CrewActivitySnapshot {
+    return { ...this.activity };
   }
 
   /**
@@ -503,4 +617,24 @@ function parseHexColor(value: string): number {
   }
 
   return parsed;
+}
+
+function shortenMiddle(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  const keep = Math.max(6, Math.floor((maxLength - 3) / 2));
+  const left = value.slice(0, keep);
+  const right = value.slice(value.length - keep);
+  return `${left}...${right}`;
+}
+
+function normalizeInline(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function asMetadataString(event: AgentEvent, key: string): string | undefined {
+  const value = event.metadata?.[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }

@@ -59,7 +59,7 @@ describe('cursor native add-agent bridge helpers', () => {
   });
 
   it('normalizes storage fallback poll values', () => {
-    expect(normalizeCursorStorageFallbackPollMs(undefined)).toBe(2500);
+    expect(normalizeCursorStorageFallbackPollMs(undefined)).toBe(1000);
     expect(normalizeCursorStorageFallbackPollMs(200)).toBe(500);
     expect(normalizeCursorStorageFallbackPollMs(1600.2)).toBe(1600);
   });

@@ -16,7 +16,7 @@ const MIN_CURSOR_NATIVE_ADD_AGENT_COOLDOWN_MS = 250;
 /**
  * Default polling interval for Cursor workspace-storage deep sync.
  */
-export const DEFAULT_CURSOR_STORAGE_FALLBACK_POLL_MS = 2500;
+export const DEFAULT_CURSOR_STORAGE_FALLBACK_POLL_MS = 1000;
 const MIN_CURSOR_STORAGE_FALLBACK_POLL_MS = 500;
 
 /**

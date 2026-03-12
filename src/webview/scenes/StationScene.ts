@@ -32,13 +32,16 @@ import { zoneForCrewState, zoneTarget } from './zoneRouting';
 
 const CREW_MOVE_SPEED_PX_PER_SECOND = 118;
 const CREW_ROAM_SPEED_RANGE = {
-  min: 24,
-  max: 44
+  min: 18,
+  max: 30
 } as const;
 const CREW_ROAM_TURN_INTERVAL_MS = {
-  min: 1400,
-  max: 4200
+  min: 3600,
+  max: 8200
 } as const;
+const CREW_ROAM_TURN_ARC_DEGREES = 28;
+const CREW_ROAM_STEER_RESPONSE = 4.6;
+const CREW_ROAM_MAX_CATCHUP_BOOST = 10;
 const CREW_MOVEMENT_BOUNDS = {
   minX: 28,
   maxX: STATION_DIMENSIONS.width - 28,
@@ -57,7 +60,7 @@ const QUICK_SELECT_KEYCODES = [
   Phaser.Input.Keyboard.KeyCodes.NINE
 ] as const;
 const SPACE_GRADIENT_STEPS = 9;
-const ZONE_REACHED_DISTANCE_PX = 16;
+const ZONE_DRIFT_RADIUS_PX = 58;
 
 interface BackgroundStar {
   x: number;
@@ -70,6 +73,9 @@ interface BackgroundStar {
 interface CrewRoamState {
   vx: number;
   vy: number;
+  desiredVx: number;
+  desiredVy: number;
+  speed: number;
   nextTurnAt: number;
   zone: StationZone;
 }
@@ -663,6 +669,7 @@ export class StationScene extends Phaser.Scene {
 
   private updateAmbientCrewMovement(now: number, delta: number, selectedManualMovement: boolean): void {
     const distanceFactor = delta / 1000;
+    const steerBlend = 1 - Math.exp(-CREW_ROAM_STEER_RESPONSE * distanceFactor);
 
     for (const [agentId, crew] of this.crewUnits) {
       const motionMode = resolveCrewMotionMode({
@@ -686,30 +693,38 @@ export class StationScene extends Phaser.Scene {
       const dx = target.x - current.x;
       const dy = target.y - current.y;
       const distanceToZone = Math.hypot(dx, dy);
-      if (distanceToZone > ZONE_REACHED_DISTANCE_PX) {
-        const speed = Phaser.Math.Between(CREW_ROAM_SPEED_RANGE.min, CREW_ROAM_SPEED_RANGE.max);
-        roamState.vx = (dx / Math.max(1, distanceToZone)) * speed;
-        roamState.vy = (dy / Math.max(1, distanceToZone)) * speed;
+      if (distanceToZone > ZONE_DRIFT_RADIUS_PX) {
+        const catchupStrength = clamp(
+          (distanceToZone - ZONE_DRIFT_RADIUS_PX) / ZONE_DRIFT_RADIUS_PX,
+          0,
+          1
+        );
+        const desiredSpeed = roamState.speed + catchupStrength * CREW_ROAM_MAX_CATCHUP_BOOST;
+        const headingX = dx / Math.max(1, distanceToZone);
+        const headingY = dy / Math.max(1, distanceToZone);
+        roamState.desiredVx = headingX * desiredSpeed;
+        roamState.desiredVy = headingY * desiredSpeed;
       } else if (now >= roamState.nextTurnAt) {
         this.retargetRoamState(roamState, zone, now);
       }
 
-      let next = clampPosition(
+      roamState.vx = Phaser.Math.Linear(roamState.vx, roamState.desiredVx, steerBlend);
+      roamState.vy = Phaser.Math.Linear(roamState.vy, roamState.desiredVy, steerBlend);
+
+      const next = clampPosition(
         {
           x: current.x + roamState.vx * distanceFactor,
           y: current.y + roamState.vy * distanceFactor
         },
         CREW_MOVEMENT_BOUNDS
       );
-      const nextDistance = Math.hypot(target.x - next.x, target.y - next.y);
-      if (nextDistance > 170) {
-        next = clampPosition(
-          {
-            x: current.x + (dx / Math.max(1, distanceToZone)) * CREW_ROAM_SPEED_RANGE.max * distanceFactor,
-            y: current.y + (dy / Math.max(1, distanceToZone)) * CREW_ROAM_SPEED_RANGE.max * distanceFactor
-          },
-          CREW_MOVEMENT_BOUNDS
-        );
+      if (next.x === CREW_MOVEMENT_BOUNDS.minX || next.x === CREW_MOVEMENT_BOUNDS.maxX) {
+        roamState.vx *= -0.35;
+        roamState.desiredVx *= -0.35;
+      }
+      if (next.y === CREW_MOVEMENT_BOUNDS.minY || next.y === CREW_MOVEMENT_BOUNDS.maxY) {
+        roamState.vy *= -0.35;
+        roamState.desiredVy *= -0.35;
       }
 
       crew.setManualMovement(true);
@@ -733,6 +748,9 @@ export class StationScene extends Phaser.Scene {
     const initialState: CrewRoamState = {
       vx: Math.cos(initialAngle) * initialSpeed,
       vy: Math.sin(initialAngle) * initialSpeed,
+      desiredVx: Math.cos(initialAngle) * initialSpeed,
+      desiredVy: Math.sin(initialAngle) * initialSpeed,
+      speed: initialSpeed,
       nextTurnAt: now + this.randomTurnIntervalMs(),
       zone
     };
@@ -742,10 +760,18 @@ export class StationScene extends Phaser.Scene {
   }
 
   private retargetRoamState(state: CrewRoamState, zone: StationZone, now: number): void {
-    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-    const speed = Phaser.Math.Between(CREW_ROAM_SPEED_RANGE.min, CREW_ROAM_SPEED_RANGE.max);
-    state.vx = Math.cos(angle) * speed;
-    state.vy = Math.sin(angle) * speed;
+    const baseAngle = Math.atan2(
+      Math.abs(state.desiredVy) > 0.001 ? state.desiredVy : state.vy,
+      Math.abs(state.desiredVx) > 0.001 ? state.desiredVx : state.vx
+    );
+    const turnOffset = Phaser.Math.DegToRad(
+      Phaser.Math.Between(-CREW_ROAM_TURN_ARC_DEGREES, CREW_ROAM_TURN_ARC_DEGREES)
+    );
+    const speedDelta = Phaser.Math.Between(-2, 2);
+    state.speed = clamp(state.speed + speedDelta, CREW_ROAM_SPEED_RANGE.min, CREW_ROAM_SPEED_RANGE.max);
+    const angle = baseAngle + turnOffset;
+    state.desiredVx = Math.cos(angle) * state.speed;
+    state.desiredVy = Math.sin(angle) * state.speed;
     state.zone = zone;
     state.nextTurnAt = now + this.randomTurnIntervalMs();
   }

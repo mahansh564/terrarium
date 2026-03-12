@@ -1,6 +1,8 @@
 import type { MissionState } from '@shared/types';
 
 const PANEL_WIDTH = 300;
+const PANEL_EXPANDED_HEIGHT = 160;
+const PANEL_COLLAPSED_HEIGHT = 28;
 
 /**
  * Mission cards panel with lightweight reward-loop boost banner.
@@ -10,8 +12,12 @@ export class MissionDeck {
   private readonly title: Phaser.GameObjects.Text;
   private readonly body: Phaser.GameObjects.Text;
   private readonly boostBanner: Phaser.GameObjects.Text;
+  private readonly collapseButton: Phaser.GameObjects.Graphics;
+  private readonly collapseLabel: Phaser.GameObjects.Text;
+  private readonly collapseHitArea: Phaser.GameObjects.Rectangle;
   private boostUntil = 0;
   private boostLabel = '';
+  private collapsed = false;
 
   /**
    * Creates a mission panel.
@@ -50,6 +56,23 @@ export class MissionDeck {
     this.boostBanner.setDepth(61);
     this.boostBanner.setVisible(false);
     this.boostBanner.setShadow(0, 1, '#0c1532', 2, false, true);
+
+    this.collapseButton = scene.add.graphics();
+    this.collapseButton.setDepth(61);
+    this.collapseLabel = scene.add.text(0, 0, '', {
+      fontFamily: '"Courier New", "Consolas", monospace',
+      fontStyle: 'bold',
+      fontSize: '10px',
+      color: '#d7ecff'
+    });
+    this.collapseLabel.setDepth(62);
+    this.collapseLabel.setShadow(0, 1, '#0c1532', 2, false, true);
+    this.collapseHitArea = scene.add.rectangle(0, 0, 1, 1, 0x000000, 0);
+    this.collapseHitArea.setDepth(63);
+    this.collapseHitArea.setInteractive({ useHandCursor: true });
+    this.collapseHitArea.on('pointerdown', () => {
+      this.collapsed = !this.collapsed;
+    });
   }
 
   /**
@@ -74,11 +97,29 @@ export class MissionDeck {
     const x = this.scene.scale.width - PANEL_WIDTH - 12;
     const y = 362;
     const width = PANEL_WIDTH;
-    const height = 160;
+    const height = this.collapsed ? PANEL_COLLAPSED_HEIGHT : PANEL_EXPANDED_HEIGHT;
     this.panel.clear();
     drawPanel(this.panel, x, y, width, height);
 
     this.title.setPosition(x + 10, y + 8);
+    drawCollapseToggle(
+      this.collapseButton,
+      x + width - 32,
+      y + 6,
+      this.collapsed
+    );
+    this.collapseLabel.setText(this.collapsed ? '[+]' : '[-]');
+    this.collapseLabel.setPosition(x + width - 27, y + 9);
+    this.collapseHitArea.setPosition(x + width - 20, y + 13);
+    this.collapseHitArea.setSize(24, 14);
+
+    if (this.collapsed) {
+      this.body.setVisible(false);
+      this.boostBanner.setVisible(false);
+      return;
+    }
+
+    this.body.setVisible(true);
     this.body.setPosition(x + 12, y + 30);
     this.body.setText(formatMissions(missions));
 
@@ -100,7 +141,26 @@ export class MissionDeck {
     this.title.destroy();
     this.body.destroy();
     this.boostBanner.destroy();
+    this.collapseButton.destroy();
+    this.collapseLabel.destroy();
+    this.collapseHitArea.destroy();
   }
+}
+
+function drawCollapseToggle(
+  graphics: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  collapsed: boolean
+): void {
+  graphics.clear();
+  graphics.fillStyle(collapsed ? 0x1a3f7b : 0x24508e, 0.95);
+  graphics.fillRect(x, y, 20, 14);
+  graphics.fillStyle(0xbbe1ff, 0.96);
+  graphics.fillRect(x, y, 20, 2);
+  graphics.fillRect(x, y + 12, 20, 2);
+  graphics.fillRect(x, y, 2, 14);
+  graphics.fillRect(x + 18, y, 2, 14);
 }
 
 function drawPanel(

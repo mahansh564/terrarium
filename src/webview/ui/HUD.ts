@@ -2,6 +2,8 @@ import type { CrewState } from '@shared/types';
 import type { CrewUnit } from '../entities/CrewUnit';
 
 const PIXEL_FONT_FAMILY = '"Courier New", "Consolas", monospace';
+const CONTROLS_PANEL_EXPANDED_HEIGHT = 68;
+const CONTROLS_PANEL_COLLAPSED_HEIGHT = 24;
 
 interface LabelBundle {
   panel: Phaser.GameObjects.Graphics;
@@ -31,6 +33,9 @@ export class HUD {
   private readonly controlsPanel: Phaser.GameObjects.Graphics;
   private readonly controlsTitle: Phaser.GameObjects.Text;
   private readonly controlsBody: Phaser.GameObjects.Text;
+  private readonly controlsCollapseButton: Phaser.GameObjects.Graphics;
+  private readonly controlsCollapseLabel: Phaser.GameObjects.Text;
+  private readonly controlsCollapseHitArea: Phaser.GameObjects.Rectangle;
   private readonly addAgentButton: Phaser.GameObjects.Graphics;
   private readonly addAgentLabel: Phaser.GameObjects.Text;
   private readonly addAgentHint: Phaser.GameObjects.Text;
@@ -41,6 +46,7 @@ export class HUD {
   private readonly onAddAgent: () => void;
   private addAgentHovered = false;
   private addAgentPressedAt = 0;
+  private controlsCollapsed = false;
   private selectedAgentId: string | null = null;
 
   /**
@@ -75,15 +81,32 @@ export class HUD {
     this.controlsBody.setDepth(61);
     this.controlsBody.setShadow(0, 1, '#00061b', 2, false, true);
 
+    this.controlsCollapseButton = scene.add.graphics();
+    this.controlsCollapseButton.setDepth(62);
+    this.controlsCollapseLabel = scene.add.text(0, 0, '', {
+      fontFamily: PIXEL_FONT_FAMILY,
+      fontStyle: 'bold',
+      fontSize: '10px',
+      color: '#d8e8ff'
+    });
+    this.controlsCollapseLabel.setDepth(63);
+    this.controlsCollapseLabel.setShadow(0, 1, '#00061b', 2, false, true);
+    this.controlsCollapseHitArea = scene.add.rectangle(0, 0, 1, 1, 0x000000, 0);
+    this.controlsCollapseHitArea.setDepth(64);
+    this.controlsCollapseHitArea.setInteractive({ useHandCursor: true });
+    this.controlsCollapseHitArea.on('pointerdown', () => {
+      this.controlsCollapsed = !this.controlsCollapsed;
+    });
+
     this.addAgentButton = scene.add.graphics();
-    this.addAgentButton.setDepth(62);
+    this.addAgentButton.setDepth(63);
     this.addAgentLabel = scene.add.text(0, 0, '+ ADD AGENT', {
       fontFamily: PIXEL_FONT_FAMILY,
       fontStyle: 'bold',
       fontSize: '11px',
       color: '#f2fbff'
     });
-    this.addAgentLabel.setDepth(63);
+    this.addAgentLabel.setDepth(64);
     this.addAgentLabel.setLetterSpacing(0.6);
     this.addAgentLabel.setShadow(0, 1, '#00061b', 2, false, true);
     this.addAgentHint = scene.add.text(0, 0, '[N]', {
@@ -91,10 +114,10 @@ export class HUD {
       fontSize: '10px',
       color: '#b5f4ff'
     });
-    this.addAgentHint.setDepth(63);
+    this.addAgentHint.setDepth(64);
     this.addAgentHint.setShadow(0, 1, '#00061b', 2, false, true);
     this.addAgentHitArea = scene.add.rectangle(0, 0, 1, 1, 0x000000, 0);
-    this.addAgentHitArea.setDepth(64);
+    this.addAgentHitArea.setDepth(65);
     this.addAgentHitArea.setInteractive({ useHandCursor: true });
     this.addAgentHitArea.on('pointerover', () => {
       this.addAgentHovered = true;
@@ -261,6 +284,9 @@ export class HUD {
     this.controlsPanel.destroy();
     this.controlsTitle.destroy();
     this.controlsBody.destroy();
+    this.controlsCollapseButton.destroy();
+    this.controlsCollapseLabel.destroy();
+    this.controlsCollapseHitArea.destroy();
     this.addAgentButton.destroy();
     this.addAgentLabel.destroy();
     this.addAgentHint.destroy();
@@ -274,7 +300,9 @@ export class HUD {
     const x = 12;
     const y = 12;
     const width = 398;
-    const height = 68;
+    const height = this.controlsCollapsed
+      ? CONTROLS_PANEL_COLLAPSED_HEIGHT
+      : CONTROLS_PANEL_EXPANDED_HEIGHT;
 
     drawPixelPanel(this.controlsPanel, x, y, width, height, {
       fill: 0x131d5a,
@@ -286,6 +314,30 @@ export class HUD {
 
     this.controlsTitle.setText('ORBITAL COMMANDS');
     this.controlsTitle.setPosition(x + 10, y + 7);
+    drawCollapseToggle(
+      this.controlsCollapseButton,
+      x + width - 32,
+      y + 5,
+      this.controlsCollapsed
+    );
+    this.controlsCollapseLabel.setText(this.controlsCollapsed ? '[+]' : '[-]');
+    this.controlsCollapseLabel.setPosition(x + width - 27, y + 8);
+    this.controlsCollapseHitArea.setPosition(x + width - 20, y + 12);
+    this.controlsCollapseHitArea.setSize(24, 14);
+
+    if (this.controlsCollapsed) {
+      this.controlsBody.setVisible(false);
+      this.addAgentButton.clear();
+      this.addAgentButton.setVisible(false);
+      this.addAgentLabel.setVisible(false);
+      this.addAgentHint.setVisible(false);
+      this.addAgentHitArea.setVisible(false);
+      this.addAgentHitArea.disableInteractive();
+      this.addAgentHovered = false;
+      return;
+    }
+
+    this.controlsBody.setVisible(true);
     this.controlsBody.setText('SELECT: TAB / SHIFT+TAB / 1..9\nMOVE: ARROW OR WASD   CLEAR: ESC   ADD: N');
     this.controlsBody.setPosition(x + 10, y + 27);
 
@@ -294,14 +346,19 @@ export class HUD {
     const buttonX = x + width - buttonWidth - 10;
     const buttonY = y + 16;
     const pressed = this.scene.time.now - this.addAgentPressedAt <= 120;
+    this.addAgentButton.setVisible(true);
     drawAddAgentButton(this.addAgentButton, buttonX, buttonY, buttonWidth, buttonHeight, {
       hovered: this.addAgentHovered,
       pressed
     });
+    this.addAgentLabel.setVisible(true);
     this.addAgentLabel.setPosition(buttonX + 13, buttonY + 9);
+    this.addAgentHint.setVisible(true);
     this.addAgentHint.setPosition(buttonX + 45, buttonY + 23);
+    this.addAgentHitArea.setVisible(false);
     this.addAgentHitArea.setPosition(buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
     this.addAgentHitArea.setSize(buttonWidth, buttonHeight);
+    this.addAgentHitArea.setInteractive({ useHandCursor: true });
 
     const scanlineY = y + 22 + Math.floor((this.scene.time.now / 120) % 32);
     this.controlsPanel.fillStyle(0xcde5ff, 0.18);
@@ -356,6 +413,22 @@ export class HUD {
     const widestText = Math.max(name.length, detail.length);
     return widestText * roughCharacterWidth + 24;
   }
+}
+
+function drawCollapseToggle(
+  graphics: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  collapsed: boolean
+): void {
+  graphics.clear();
+  graphics.fillStyle(collapsed ? 0x1a3f7b : 0x24508e, 0.95);
+  graphics.fillRect(x, y, 20, 14);
+  graphics.fillStyle(0xbbe1ff, 0.96);
+  graphics.fillRect(x, y, 20, 2);
+  graphics.fillRect(x, y + 12, 20, 2);
+  graphics.fillRect(x, y, 2, 14);
+  graphics.fillRect(x + 18, y, 2, 14);
 }
 
 function drawPixelPanel(

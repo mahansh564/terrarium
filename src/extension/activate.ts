@@ -428,6 +428,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
         const transcriptRootPath = resolveCursorProjectTranscriptPath(workspaceFolder.uri.fsPath);
         const syntheticEvents = synthesizeCursorRuntimeComposerEvents({
           previousComposers: cursorRuntimeComposers,
+          currentComposers: event.all,
           addedComposers: event.added,
           updatedComposers: event.updated,
           ...(transcriptRootPath !== null
@@ -437,7 +438,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<CodeOr
               }
             : {})
         });
-        updateCursorRuntimeComposers(event.all);
+        const composerSetChanged =
+          event.added.length > 0 || event.updated.length > 0 || event.removed.length > 0;
+        if (composerSetChanged) {
+          updateCursorRuntimeComposers(event.all);
+        }
         for (const syntheticEvent of syntheticEvents) {
           publishAgentEvent(syntheticEvent);
         }

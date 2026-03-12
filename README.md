@@ -28,6 +28,7 @@ CodeOrbit is a VS Code extension that visualizes AI coding agents as crew units 
 4. In the Extension Development Host, run:
    - `CodeOrbit: Add Agent` (configure at least one transcript source)
    - `CodeOrbit: Open Station`
+   - Hover any spacecraft to inspect live `NOW` activity, last event age, and stream source details.
    - Or inside the station HUD, use `+ ADD AGENT` (or press `N`) to trigger the same VS Code/Cursor add-agent flow.
    - In Cursor, when `codeorbit.cursorNativeAddAgentBridge.enabled` is `true`, CodeOrbit mirrors active Cursor agent chats as runtime-only agents (named from Cursor composer names) using `~/.cursor/projects/<workspace>/agent-transcripts/<composerId>/<composerId>.jsonl`.
 
@@ -48,7 +49,7 @@ CodeOrbit reads settings from the `codeorbit` namespace in workspace settings.
 - `codeorbit.cursorNativeAddAgentBridge.commandIds` (`string[]`, default includes Cursor agent/composer new commands)
 - `codeorbit.cursorNativeAddAgentBridge.cooldownMs` (`number`, default `1200`, min `250`)
 - `codeorbit.cursorNativeAddAgentBridge.storageFallbackEnabled` (`boolean`, default `true`)
-- `codeorbit.cursorNativeAddAgentBridge.storageFallbackPollMs` (`number`, default `2500`, min `500`)
+- `codeorbit.cursorNativeAddAgentBridge.storageFallbackPollMs` (`number`, default `1000`, min `500`)
 
 Deep sync note: storage fallback reads Cursor `state.vscdb` via the `sqlite3` CLI (when available) to mirror open `unifiedMode: "agent"` composers (selected/focused), with fallback to non-archived agent composers when open-state ids are unavailable.
 
@@ -80,7 +81,7 @@ Each agent entry supports:
   ],
   "codeorbit.cursorNativeAddAgentBridge.cooldownMs": 1200,
   "codeorbit.cursorNativeAddAgentBridge.storageFallbackEnabled": true,
-  "codeorbit.cursorNativeAddAgentBridge.storageFallbackPollMs": 2500,
+  "codeorbit.cursorNativeAddAgentBridge.storageFallbackPollMs": 1000,
   "codeorbit.agents": [
     {
       "id": "codex",

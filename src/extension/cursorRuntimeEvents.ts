@@ -13,6 +13,8 @@ export const CURSOR_RUNTIME_RUNNING_RECENCY_MS = 15_000;
 export interface CursorRuntimeEventSynthesisOptions {
   /** Previous active Cursor composer snapshot. */
   previousComposers: readonly CursorComposerRecord[];
+  /** Current active Cursor composer snapshot after latest sync pass. */
+  currentComposers?: readonly CursorComposerRecord[];
   /** Newly added Cursor composers from the latest sync pass. */
   addedComposers: readonly CursorComposerRecord[];
   /** Updated Cursor composers from the latest sync pass. */
@@ -44,10 +46,30 @@ export function synthesizeCursorRuntimeComposerEvents(
   const previousById = new Map(
     options.previousComposers.map((composer) => [composer.composerId, composer])
   );
-  const changedComposers = [...options.addedComposers, ...options.updatedComposers];
+  const changedComposerIds = new Set<string>();
+  const inspectedComposers: CursorComposerRecord[] = [];
+  for (const composer of [...options.addedComposers, ...options.updatedComposers]) {
+    if (changedComposerIds.has(composer.composerId)) {
+      continue;
+    }
+
+    changedComposerIds.add(composer.composerId);
+    inspectedComposers.push(composer);
+  }
+  for (const composer of options.currentComposers ?? []) {
+    if (changedComposerIds.has(composer.composerId)) {
+      continue;
+    }
+
+    if (!isComposerRecentlyActive(composer, now, runningRecencyMs)) {
+      continue;
+    }
+
+    inspectedComposers.push(composer);
+  }
   const events: AgentEvent[] = [];
 
-  for (const composer of changedComposers) {
+  for (const composer of inspectedComposers) {
     const previous = previousById.get(composer.composerId);
     const identity = options.resolveAgentIdentity?.(composer);
     const fallbackName = resolveCursorComposerDisplayName(composer);
@@ -57,6 +79,7 @@ export function synthesizeCursorRuntimeComposerEvents(
     const previousBlocking = previous?.hasBlockingPendingActions === true;
     const nextBlocking = composer.hasBlockingPendingActions === true;
     const recentlyActive = isComposerRecentlyActive(composer, now, runningRecencyMs);
+    const metadata = createCursorRuntimeMetadata(composer);
 
     if (recentlyActive) {
       events.push({
@@ -65,39 +88,30 @@ export function synthesizeCursorRuntimeComposerEvents(
         agentId,
         ...(agentName.length > 0 ? { agentName } : {}),
         command: 'cursor-runtime-running-pulse',
-        metadata: {
-          source: 'cursor_composer_storage',
-          composerId: composer.composerId
-        }
+        metadata
       });
     }
 
-    if (nextBlocking) {
+    if (nextBlocking && !previousBlocking) {
       events.push({
         kind: 'input_request',
         ts,
         agentId,
         ...(agentName.length > 0 ? { agentName } : {}),
         prompt: 'Cursor agent requires user input.',
-        metadata: {
-          source: 'cursor_composer_storage',
-          composerId: composer.composerId
-        }
+        metadata
       });
       continue;
     }
 
-    if (previousBlocking) {
+    if (previousBlocking && !nextBlocking) {
       events.push({
         kind: 'idle',
         ts,
         agentId,
         ...(agentName.length > 0 ? { agentName } : {}),
         reason: 'Cursor blocking input request resolved.',
-        metadata: {
-          source: 'cursor_composer_storage',
-          composerId: composer.composerId
-        }
+        metadata
       });
     }
   }
@@ -137,4 +151,13 @@ function toRuntimeAgentId(composerId: string): string {
 function toComposerTimestamp(composer: CursorComposerRecord, now: number): number {
   const candidateTs = composer.lastUpdatedAt ?? composer.createdAt;
   return candidateTs !== undefined ? candidateTs : now;
+}
+
+function createCursorRuntimeMetadata(composer: CursorComposerRecord): Record<string, string> {
+  const composerName = composer.name?.trim() ?? '';
+  return {
+    source: 'cursor_composer_storage',
+    composerId: composer.composerId,
+    ...(composerName.length > 0 ? { composerName } : {})
+  };
 }
